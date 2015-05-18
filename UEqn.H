@@ -7,11 +7,13 @@
 	      + fvm::div(phimean, U)
 	      + fvc::div(phi, Umean)
 	      + turbulence->divDevReff(U)
-	      + centrifugal*sqr(U.component(0))/Rcurvature
+	      - CentrifugalFactor*centrifugal*sqr(Umean.component(0)+U.component(0))/Rcurvature	      
 	      - fvm::laplacian(AnisotropicDiffusion,U)
 	     ==
 		fvOptions(U)
     );
+
+//+U.component(0)
 
     //if (whiteNoiseFlag && !ExplicitwhiteNoiseFlag) { 
 //	  UEqn.source() += Uwhitenoise;

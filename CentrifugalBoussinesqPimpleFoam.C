@@ -49,9 +49,9 @@ int main(int argc, char *argv[])
 {
 
 
-    Info << " \n\nCentrifugal solver  :  0.0.1" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.1.0" << endl; 
     Info << " -------------------------- " << endl; 
-    Info << " \n\nCBased on basestate version 0.8.0" << endl; 
+    Info << " \n\nBased on basestate version 0.8.0" << endl; 
 
     #include "setRootCase.H"
     #include "createTime.H"

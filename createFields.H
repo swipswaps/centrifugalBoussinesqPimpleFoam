@@ -29,6 +29,20 @@
     );
 
 
+    volScalarField CentrifugalFactor
+    (
+        IOobject
+        (
+            "CentrifugalFactor",
+            runTime.timeName(),
+            mesh,
+            IOobject::MUST_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh
+    );
+
+
     dimensionedScalar TRef = sum(Tmean*mesh.V())/sum(mesh.V());
 
     Info<< "Reading field p_rgh\n" << endl;
