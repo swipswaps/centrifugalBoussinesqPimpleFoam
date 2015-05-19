@@ -52,8 +52,9 @@
 
     p = p_rgh;
 
-    if (p_rgh.needReference())
-    {
+
+//    if (p_rgh.needReference())
+//    {
         p += dimensionedScalar
         (
             "p",
@@ -61,5 +62,5 @@
             pRefValue - getRefCellValue(p, pRefCell)
         );
         p_rgh = p; 
-    }
+//    }
 }

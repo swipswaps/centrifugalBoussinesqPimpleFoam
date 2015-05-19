@@ -22,9 +22,13 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Application
-    basestateBoussinesqPimpleFoam
+	centrifugalBoussinesqPimpleFoam
 
 Description
+	* Takes into account the centrifugal term. 
+	* The Umean is a nudging term. we use the nudging term as with the center of the cell. 
+	* 
+ 
 
 \*---------------------------------------------------------------------------*/
 
@@ -48,11 +52,6 @@ Description
 int main(int argc, char *argv[])
 {
 
-
-    Info << " \n\nCentrifugal solver  :  0.1.0" << endl; 
-    Info << " -------------------------- " << endl; 
-    Info << " \n\nBased on basestate version 0.8.0" << endl; 
-
     #include "setRootCase.H"
     #include "createTime.H"
     #include "createMesh.H"
@@ -66,11 +65,19 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
+    Info << " \n\nCentrifugal solver  :  0.1.8 - Nudging" << endl; 
+    Info << " -------------------------- " << endl; 
+    Info << " \n\nBased on basestate version 0.8.0" << endl; 
+    Info << " Correcting the p--- assuming p is always gradient" << endl;
+
     const bool nonlinear = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("nonlinearSolver", true);
 
     const bool    ExplicitwhiteNoiseFlag       = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("explicitwhitenoise", true);
     const bool    whiteNoiseFlag       	       = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("whitenoise", false);
     const scalar  whiteNoiseSeed               = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("whitenoise_seed", 0);
+    
+//    const dimensionedScalar nudgingFactor(mesh.solutionDict().subDict("PIMPLE").lookup("nudging"));
+    const scalar nudgingFactor				   = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("nudging",0.0);
 
     IOdictionary MeanKineticEnergy
     (
@@ -103,13 +110,13 @@ int main(int argc, char *argv[])
     } else { 
 	    Info << "* no white noise " << endl; 
     }
+    Info << "Nudging coefficient " << nudgingFactor << endl; 
 
 	label n=Pstream::nProcs();
     Random perturbation(whiteNoiseSeed+Pstream::myProcNo()*n);	
 
-//	std::ostringstream outname;
+
     pimpleControl pimple(mesh);
-   
 
     // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
     Info<< "\nStarting time loop\n" << endl;
@@ -121,6 +128,10 @@ int main(int argc, char *argv[])
 
 	scalar MinDiffusionZ = min(AnisotropicDiffusion.component(8)).value(); 
 	scalar MaxDiffusionZ = max(AnisotropicDiffusion.component(8)).value(); 		
+	
+	
+	const scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;
+	
 
     while (runTime.loop())
     {
@@ -133,7 +144,7 @@ int main(int argc, char *argv[])
 	if (whiteNoiseFlag) {
 		
 		
-				  forAll(mesh.C().internalField(), celli)
+		  forAll(mesh.C().internalField(), celli)
 		  {
 		  
 			scalar factorX; 

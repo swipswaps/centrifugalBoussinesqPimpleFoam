@@ -31,8 +31,7 @@
 
     volScalarField CentrifugalFactor
     (
-        IOobject
-        (
+        IOobject        (
             "CentrifugalFactor",
             runTime.timeName(),
             mesh,
@@ -105,6 +104,8 @@
         U+Umean
     );
     Utotal.write(); 
+    
+    
 
     Info<< "Creating field Ttotal = T (perturbation) + Tmean\n" << endl;
     volScalarField Ttotal
@@ -256,3 +257,17 @@
 	mesh
     );
 
+
+	volVectorField NudgingTerm
+    (
+        IOobject
+        (
+            "NudgingTerm",
+            runTime.timeName(),
+            mesh,
+            IOobject::NO_READ,
+            IOobject::AUTO_WRITE
+        ),
+        mesh,
+        dimensionedVector("Zero",dimensionSet(0,1,-2,0,0,0,0),vector::zero)        
+    );
