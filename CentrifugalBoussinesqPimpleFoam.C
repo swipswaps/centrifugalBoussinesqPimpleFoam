@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.2.0(a)" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.0(b)" << endl; 
     Info << " -------------------------- " << endl; 
     Info << " \n\nBased on basestate version 0.8.0" << endl; 
 
@@ -144,10 +144,10 @@ int main(int argc, char *argv[])
 		centercelli = searchEngine.findCell(position,centercelli); //findCell(position);
 		
 		if (centercelli == -1) { 
-			Sout << " Error in processor "  << Pstream::myProcNo() << endl;
-		} else { 
-			CenterLookup[celli] = centercelli; 
+			Sout << " Celll not found  in processor "  << Pstream::myProcNo() << ": At cell " << mesh.C().internalField()[celli] << " label " << celli << " looking for position " << position << " Not Found!" << endl;
 		}
+		CenterLookup[celli] = centercelli; 
+		
 	}
 	Info << " -- End -- " << endl; 
 
