@@ -40,6 +40,7 @@ Description
 #include "pimpleControl.H"
 #include "interpolation.H"
 #include "Random.H"
+#include "meshSearch.H"
 
 #include <sstream>
 #include <fstream>
@@ -131,14 +132,16 @@ int main(int argc, char *argv[])
 	List<int> CenterLookup(mesh.C().internalField().size());
 
 	Info << " Building the lookup table for the center  " << CenterOfDomain  << " mesh bounds [" << max(mesh.C().component(1)).value() << " , " << min(mesh.C().component(1)).value() << "]" << endl; 
-/*
+ 
+	meshSearch searchEngine(mesh);
+	label centercelli = -1;
 	forAll(mesh.C().internalField(), celli) { 
 		if (celli % 10000 == 0) {
 			Info << celli << "/" << mesh.C().internalField().size() << endl;
 		}
 		vector position = mesh.C().internalField()[celli];
 		position.component(1) = CenterOfDomain;
-		label centercelli = mesh.findCell(position);
+		centercelli = searchEngine.findCell(position,centercelli); //findCell(position);
 		
 		if (centercelli == -1) { 
 			Sout << " Error in processor "  << Pstream::myProcNo() << endl;
@@ -147,7 +150,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	Info << " -- End -- " << endl; 
-*/
+
     while (runTime.loop())
     {
         Info<< "Time = " << runTime.timeName() << nl << endl;

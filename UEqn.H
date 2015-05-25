@@ -2,12 +2,12 @@
 
 	vector centrifugal(0,1,0); 
 
-/*	
+	
 	// Now adjust the nudging. 
 	Info << " In " << endl; 
 	forAll(NudgingTerm.internalField(), celli) {
 		label centercelli =  CenterLookup[celli]; 
-		//NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.component(0)->operator[](centercelli) - Umean.component(0)->operator[](centercelli));
+		NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.component(0)->operator[](centercelli) - Umean.component(0)->operator[](centercelli));
 	}
 	
 	forAll(NudgingTerm.boundaryField(), celli)
@@ -17,7 +17,7 @@
 		NudgingTerm[celli].component(2) = 0; 
 	}	
 	Info << " Out " << endl; 
-	*/
+	
     fvVectorMatrix UEqn(
 		(nonlinear ? fvm::ddt(U) + fvm::div(phi, U) : fvm::ddt(U))
 	      + turbulence->divDevReff(U)
