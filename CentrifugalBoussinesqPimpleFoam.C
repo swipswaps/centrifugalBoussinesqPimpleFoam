@@ -65,10 +65,9 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.2.0" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.0(a)" << endl; 
     Info << " -------------------------- " << endl; 
     Info << " \n\nBased on basestate version 0.8.0" << endl; 
-    Info << " Correcting the p--- assuming p is always gradient" << endl;
 
     const bool nonlinear = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("nonlinearSolver", true);
 
@@ -79,6 +78,7 @@ int main(int argc, char *argv[])
 //    const dimensionedScalar nudgingFactor(mesh.solutionDict().subDict("PIMPLE").lookup("nudging"));
     const scalar nudgingFactor				   = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("nudging",0.0);
 
+	
     IOdictionary MeanKineticEnergy
     (
 	IOobject
@@ -96,12 +96,7 @@ int main(int argc, char *argv[])
      dimensionedScalar rootdT = sqrt(runTime.deltaT());
 
      scalar KEfactor(EnergyFraction*KE.value()/rootdT.value());
-
     Info << "* " << ( nonlinear ? "non-linear" : "linear") << " solver. --- " <<endl; 
-    if (whiteNoiseFlag) { 
-	Info << "* Whitenoise (" << (ExplicitwhiteNoiseFlag ? "Explicit" : "Implicit") << ")" << endl; 	
-	Info << "\t** Using whitenoise, seed : " << whiteNoiseSeed << endl; 
-	Info << "\t** KineticEnergy  " << KE.value()  << " | Fraction " << EnergyFraction << endl; 
 
     Info << "\n ---- Running " << ( nonlinear ? "non-linear" : "linear") << " solver. --- " <<endl; 
     if (whiteNoiseFlag) { 
@@ -114,6 +109,7 @@ int main(int argc, char *argv[])
 
 	label n=Pstream::nProcs();
     Random perturbation(whiteNoiseSeed+Pstream::myProcNo()*n);	
+
 
 
     pimpleControl pimple(mesh);
@@ -132,7 +128,26 @@ int main(int argc, char *argv[])
 	
 	const scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;
 	
+	List<int> CenterLookup(mesh.C().internalField().size());
 
+	Info << " Building the lookup table for the center  " << CenterOfDomain  << " mesh bounds [" << max(mesh.C().component(1)).value() << " , " << min(mesh.C().component(1)).value() << "]" << endl; 
+/*
+	forAll(mesh.C().internalField(), celli) { 
+		if (celli % 10000 == 0) {
+			Info << celli << "/" << mesh.C().internalField().size() << endl;
+		}
+		vector position = mesh.C().internalField()[celli];
+		position.component(1) = CenterOfDomain;
+		label centercelli = mesh.findCell(position);
+		
+		if (centercelli == -1) { 
+			Sout << " Error in processor "  << Pstream::myProcNo() << endl;
+		} else { 
+			CenterLookup[celli] = centercelli; 
+		}
+	}
+	Info << " -- End -- " << endl; 
+*/
     while (runTime.loop())
     {
         Info<< "Time = " << runTime.timeName() << nl << endl;
@@ -190,33 +205,14 @@ int main(int argc, char *argv[])
 		  }
 		
 	}
+	
 
-	Info << "_---------------------------------------_" << Pstream::myProcNo() << endl; 
-	
-	// Now adjust the nudging. 
-	//forAll(NudgingTerm.internalField(), celli) {
-		label celli = 150;
-		vector position = mesh.C().internalField()[celli];
-		Info << "For the cell in position " << position;
-		position.component(1) = CenterOfDomain;
-		Info << " find the cell in  " << position;
-		label centercelli = mesh.findCell(position);
-		Info   << Pstream::myProcNo() << " --> " << centercelli  << endl; // << " || (U-Umean)=" << U.component(0)->operator[](centercelli) << " - " <<  Umean.component(0)->operator[](centercelli) << endl;
-		//NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.component(0)->operator[](centercelli) - Umean.component(0)->operator[](centercelli));
-		
-	//}
-	
-	forAll(NudgingTerm.boundaryField(), celli)
-	{
-		NudgingTerm[celli].component(0) = 0; 
-		NudgingTerm[celli].component(1) = 0; 
-		NudgingTerm[celli].component(2) = 0; 
-	}	
-	 
 
         // --- Pressure-velocity PIMPLE corrector loop
         while (pimple.loop())
         {
+			
+			
            #include "UEqn.H"
 	       #include "TEqn.H"
 	    
@@ -238,7 +234,7 @@ int main(int argc, char *argv[])
 		T +=  Twhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
 	}
 
-	Utotal = U + Umean; 
+	Utotal = U; 
 	Ttotal = T+Tmean;
 
 	runTime.write();
@@ -252,7 +248,6 @@ int main(int argc, char *argv[])
     Info<< "End\n" << endl;
 
     return 0;
-}
 }
 
 // ************************************************************************* //
