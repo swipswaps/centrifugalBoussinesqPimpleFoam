@@ -3,7 +3,7 @@
 	vector centrifugal(0,1,0); 
 
 	
-	
+/*	
 	// Calculating the nudging term
 	forAll(NudgingTerm.internalField(), celli) {
 		
@@ -22,7 +22,7 @@
 		NudgingTerm[celli].component(1) = 0; 
 		NudgingTerm[celli].component(2) = 0; 
 	}	
-	
+*/	
 	
     fvVectorMatrix UEqn(
 		(nonlinear ? fvm::ddt(U) + fvm::div(phi, U) : fvm::ddt(U))

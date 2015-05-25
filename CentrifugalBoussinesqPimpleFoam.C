@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.1.8 - Nudging" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.0" << endl; 
     Info << " -------------------------- " << endl; 
     Info << " \n\nBased on basestate version 0.8.0" << endl; 
     Info << " Correcting the p--- assuming p is always gradient" << endl;
@@ -189,7 +189,30 @@ int main(int argc, char *argv[])
 			Twhitenoise[celli]              = 0; 
 		  }
 		
-	} 
+	}
+
+	Info << "_---------------------------------------_" << Pstream::myProcNo() << endl; 
+	
+	// Now adjust the nudging. 
+	//forAll(NudgingTerm.internalField(), celli) {
+		label celli = 150;
+		vector position = mesh.C().internalField()[celli];
+		Info << "For the cell in position " << position;
+		position.component(1) = CenterOfDomain;
+		Info << " find the cell in  " << position;
+		label centercelli = mesh.findCell(position);
+		Info   << Pstream::myProcNo() << " --> " << centercelli  << endl; // << " || (U-Umean)=" << U.component(0)->operator[](centercelli) << " - " <<  Umean.component(0)->operator[](centercelli) << endl;
+		//NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.component(0)->operator[](centercelli) - Umean.component(0)->operator[](centercelli));
+		
+	//}
+	
+	forAll(NudgingTerm.boundaryField(), celli)
+	{
+		NudgingTerm[celli].component(0) = 0; 
+		NudgingTerm[celli].component(1) = 0; 
+		NudgingTerm[celli].component(2) = 0; 
+	}	
+	 
 
         // --- Pressure-velocity PIMPLE corrector loop
         while (pimple.loop())
