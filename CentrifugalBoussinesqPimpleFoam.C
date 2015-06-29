@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.2.0(b)" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.1" << endl; 
     Info << " -------------------------- " << endl; 
     Info << " \n\nBased on basestate version 0.8.0" << endl; 
 
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
         #include "CourantNo.H"
         #include "setDeltaT.H"
 
-	if (whiteNoiseFlag) {
+		if (whiteNoiseFlag) {
 		
 		
 		  forAll(mesh.C().internalField(), celli)
@@ -207,15 +207,14 @@ int main(int argc, char *argv[])
 			Twhitenoise[celli]              = 0; 
 		  }
 		
-	}
+		}
 	
 
 
         // --- Pressure-velocity PIMPLE corrector loop
         while (pimple.loop())
         {
-			
-			
+		
            #include "UEqn.H"
 	       #include "TEqn.H"
 	    
@@ -232,19 +231,19 @@ int main(int argc, char *argv[])
         }
 	
 	
-	if (whiteNoiseFlag && ExplicitwhiteNoiseFlag) { 
-		U +=  Uwhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
-		T +=  Twhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
-	}
+		if (whiteNoiseFlag && ExplicitwhiteNoiseFlag) { 
+			U +=  Uwhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
+			T +=  Twhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
+		}
 
-	Utotal = U; 
-	Ttotal = T+Tmean;
+		Utotal = U; 
+		Ttotal = T+Tmean;
 
-	runTime.write();
+		runTime.write();
 
-	Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
-		<< "  ClockTime = " << runTime.elapsedClockTime() << " s"
-		<< nl << endl;
+		Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
+			<< "  ClockTime = " << runTime.elapsedClockTime() << " s"
+			<< nl << endl;
             
     }
 

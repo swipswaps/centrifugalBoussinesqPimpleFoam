@@ -7,7 +7,7 @@
 	forAll(NudgingTerm.internalField(), celli) {
 		label centercelli =  CenterLookup[celli]; 
 		if (centercelli == -1) continue; // ignore phantom cells because of the cyclic/domain decompostion boundary cells. 
-		NudgingTerm.internalField()[celli].component(0) = U.internalField()[centercelli].component(0)- Umean.internalField()[centercelli].component(0);
+		NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.internalField()[centercelli].component(0)- Umean.internalField()[centercelli].component(0));
 	}
 	
 	forAll(NudgingTerm.boundaryField(), celli)
