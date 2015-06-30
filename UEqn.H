@@ -6,8 +6,10 @@
 	// Now adjust the nudging. 
 	forAll(NudgingTerm.internalField(), celli) {
 		label centercelli =  CenterLookup[celli]; 
+		
 		if (centercelli == -1) continue; // ignore phantom cells because of the cyclic/domain decompostion boundary cells. 
 		NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.internalField()[centercelli].component(0)- Umean.internalField()[centercelli].component(0));
+		
 	}
 	
 	forAll(NudgingTerm.boundaryField(), celli)
@@ -18,11 +20,12 @@
 	}	
 	
 	
+	
     fvVectorMatrix UEqn(
 		(nonlinear ? fvm::ddt(U) + fvm::div(phi, U) : fvm::ddt(U))
 	      + turbulence->divDevReff(U)
 	      - CentrifugalFactor*centrifugal*sqr(U.component(0))/Rcurvature	      
-	      + nudgingFactor*(U-Umean)
+	      + NudgingTerm
 	      - fvm::laplacian(AnisotropicDiffusion,U)
 	     ==
 		fvOptions(U)
