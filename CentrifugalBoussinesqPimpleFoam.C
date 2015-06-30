@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.2.1" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.2" << endl; 
     Info << " -------------------------- " << endl; 
     Info << " \n\nBased on basestate version 0.8.0" << endl; 
 

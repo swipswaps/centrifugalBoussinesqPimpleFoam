@@ -6,7 +6,6 @@
 
     fvScalarMatrix TEqn(
 		(nonlinear ? fvm::ddt(T) + fvm::div(phi, T) : fvm::ddt(T))
-	      + fvm::div(phimean, T)
 	      + fvc::div(phi,Tmean)
 	      - fvm::laplacian(alphaEff, T)
 	      - fvm::laplacian(AnisotropicDiffusion,T)
