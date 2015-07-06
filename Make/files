@@ -1,0 +1,3 @@
+CentrifugalBoussinesqPimpleFoam.C
+
+EXE = $(FOAM_APPBIN)/centrifugalBoussinesqPimpleFoam
