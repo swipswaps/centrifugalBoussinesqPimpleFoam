@@ -34,8 +34,10 @@ Description
 
 #include "fvCFD.H"
 #include "singlePhaseTransportModel.H"
-#include "RASModel.H"
+//#include "RASModel.H"
 #include "radiationModel.H"
+#include "turbulentTransportModel.H"
+
 #include "fvIOoptionList.H"
 #include "pimpleControl.H"
 #include "interpolation.H"
@@ -56,12 +58,15 @@ int main(int argc, char *argv[])
     #include "setRootCase.H"
     #include "createTime.H"
     #include "createMesh.H"
+
+    pimpleControl pimple(mesh);
+
     #include "readGravitationalAcceleration.H"
     #include "createFields.H"
-    #include "createIncompressibleRadiationModel.H"
+//    #include "createIncompressibleRadiationModel.H"
     #include "createFvOptions.H"
     #include "initContinuityErrs.H"
-    #include "readTimeControls.H"
+    #include "createTimeControls.H"
     #include "CourantNo.H"
     #include "setInitialDeltaT.H"
 
@@ -108,12 +113,17 @@ int main(int argc, char *argv[])
     }
     Info << "Nudging coefficient " << nudgingFactor << endl; 
 
-	label n=Pstream::nProcs();
+    label n=Pstream::nProcs();
     Random perturbation(whiteNoiseSeed+Pstream::myProcNo()*n);	
 
 
 
-    pimpleControl pimple(mesh);
+
+
+
+
+
+
 
     // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
     Info<< "\nStarting time loop\n" << endl;
@@ -215,7 +225,7 @@ int main(int argc, char *argv[])
         while (pimple.loop())
         {
 		
-           #include "UEqn.H"
+          #include "UEqn.H"
 	       #include "TEqn.H"
 	    
 	        // --- Pressure corrector loop
@@ -230,17 +240,15 @@ int main(int argc, char *argv[])
             }
         }
 	
-	
 		if (whiteNoiseFlag && ExplicitwhiteNoiseFlag) { 
 			U +=  Uwhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
 			T +=  Twhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
 		}
 
-		Utotal = U; 
-		Ttotal = T+Tmean;
+//		Utotal = U; 
+//		Ttotal = T+Tmean;
 
 		runTime.write();
-
 		Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
 			<< "  ClockTime = " << runTime.elapsedClockTime() << " s"
 			<< nl << endl;

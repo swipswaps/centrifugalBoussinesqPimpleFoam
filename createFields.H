@@ -176,6 +176,12 @@
     Info << "Calculating the mean rho" << nl; 
 
     Info<< "Creating turbulence model\n" << endl;
+//    autoPtr<incompressible::RASModel> turbulence
+//    (
+//	    incompressible::New<incompressible::RASModel>(U, phi, laminarTransport)
+//    );
+
+
     autoPtr<incompressible::turbulenceModel> turbulence
     (
         incompressible::turbulenceModel::New(U, phi, laminarTransport)

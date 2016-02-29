@@ -26,7 +26,7 @@
 
     TEqn.solve();
 
-    radiation->correct();
+//    radiation->correct();
 
     fvOptions.correct(T);
 

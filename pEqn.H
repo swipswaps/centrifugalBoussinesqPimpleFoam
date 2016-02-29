@@ -49,9 +49,7 @@
     }
 
     #include "continuityErrs.H"
-
     p = p_rgh;
-
 
     if (p_rgh.needReference())
     {
