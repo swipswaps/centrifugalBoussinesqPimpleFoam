@@ -248,6 +248,22 @@ int main(int argc, char *argv[])
 //		Utotal = U; 
 //		Ttotal = T+Tmean;
 
+
+                Info << fvc::ddt(U)->weightedAverage(mesh.V()) << endl; 
+                Info << fvc::div(phi, U)->weightedAverage(mesh.V()) << endl; 
+                Info << fvc::laplacian(AnisotropicDiffusion,U)->weightedAverage(mesh.V()) << endl;
+                Info << fvc::grad(p_rgh)->weightedAverage(mesh.V()) << endl;
+                Info << (g*rhok_tag)->weightedAverage(mesh.V()) << endl;
+		Info << NudgingTerm.weightedAverage(mesh.V()) << endl;
+
+		Info << (
+                (nonlinear ? fvc::ddt(U) + fvc::div(phi, U) : fvc::ddt(U))
+              + NudgingTerm
+              - fvc::laplacian(AnisotropicDiffusion,U)
+              + fvc::grad(p_rgh)
+              - g*rhok_tag)->weightedAverage(mesh.V()) ;
+
+
 		runTime.write();
 		Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
 			<< "  ClockTime = " << runTime.elapsedClockTime() << " s"
