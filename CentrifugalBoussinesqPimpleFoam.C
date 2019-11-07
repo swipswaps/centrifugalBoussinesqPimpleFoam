@@ -47,11 +47,13 @@ Description
 #include <sstream>
 #include <fstream>
 
+#include "globalMeshData.H"
+#include "globalIndex.H"
 
 
 //#include "stdlib.h"
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
+#include "EnergyFunctions.H"
 int main(int argc, char *argv[])
 {
 
@@ -71,9 +73,8 @@ int main(int argc, char *argv[])
     #include "setInitialDeltaT.H"
 
 
-    Info << " \n\nCentrifugal solver  :  0.2.3" << endl; 
+    Info << " \n\nCentrifugal solver  :  0.2.3 - with balances" << endl; 
     Info << " -------------------------- " << endl; 
-    Info << " \n\nBased on basestate version 0.8.0" << endl; 
 
     const bool nonlinear = mesh.solutionDict().subDict("PIMPLE").lookupOrDefault("nonlinearSolver", true);
 
@@ -118,7 +119,7 @@ int main(int argc, char *argv[])
 
 
 
-
+    #include "EnergyInit.H"
 
 
 
@@ -245,23 +246,8 @@ int main(int argc, char *argv[])
 			T +=  Twhitenoise*runTime.deltaT()/dimensionedScalar("corrector",dimTime,scalar(1));
 		}
 
-//		Utotal = U; 
-//		Ttotal = T+Tmean;
-
-
-                Info << fvc::ddt(U)->weightedAverage(mesh.V()) << endl; 
-                Info << fvc::div(phi, U)->weightedAverage(mesh.V()) << endl; 
-                Info << fvc::laplacian(AnisotropicDiffusion,U)->weightedAverage(mesh.V()) << endl;
-                Info << fvc::grad(p_rgh)->weightedAverage(mesh.V()) << endl;
-                Info << (g*rhok_tag)->weightedAverage(mesh.V()) << endl;
-		Info << NudgingTerm.weightedAverage(mesh.V()) << endl;
-
-		Info << (
-                (nonlinear ? fvc::ddt(U) + fvc::div(phi, U) : fvc::ddt(U))
-              + NudgingTerm
-              - fvc::laplacian(AnisotropicDiffusion,U)
-              + fvc::grad(p_rgh)
-              - g*rhok_tag)->weightedAverage(mesh.V()) ;
+		
+		#include "EnergyBalance.H"
 
 
 		runTime.write();
