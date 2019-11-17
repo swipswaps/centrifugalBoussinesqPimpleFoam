@@ -40,6 +40,7 @@ class EnergyBalanceTerms {
 	protected:
 
 	bool _calcMean;
+	bool _work;    // if mean is not present and ZoneName is not "", don't do anything. 
 
 
 	// ==========================================================

@@ -10,6 +10,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 				volScalarField &T,
 				word ZoneName) :
 	_calcMean(false),
+	_work(true),
 	mesh(mesh),
 	runTime(runTime),
 	U(U), 
@@ -32,8 +33,6 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	mean_energy_dUdt(0)
 {
 
-
-
 	IOobject check_mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
 	if (check_mean_U_Header.headerOk()) { 
 
@@ -44,23 +43,26 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		IOobject mean_Phi_header("mean_phi",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
 
 		mean_U 		= new Foam::volVectorField(mean_U_Header,mesh); 
-/*		mean_p_rgh  	= new Foam::volScalarField(mean_p_rgh_Header,mesh,dimensionedScalar("uu",p_rgh.dimensions(),0)); ;
-		mean_T  	= new Foam::volScalarField(mean_U_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
-		mean_phi	= new Foam::surfaceScalarField(mean_U_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
-*/
-	} else {
-		_calcMean = true;
-
-		IOobject mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
-		IOobject mean_p_rgh_Header("mean_p_rgh" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
-		IOobject mean_T_Header("mean_T" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
-		IOobject mean_Phi_header("mean_phi",mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
-
-		mean_U 		= new Foam::volVectorField(mean_U_Header,mesh,dimensionedVector("uu",U.dimensions(),vector::zero)); 
 		mean_p_rgh  	= new Foam::volScalarField(mean_p_rgh_Header,mesh,dimensionedScalar("uu",p_rgh.dimensions(),0)); ;
 		mean_T  	= new Foam::volScalarField(mean_U_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
 		mean_phi	= new Foam::surfaceScalarField(mean_U_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
 
+	} else {
+		if (ZoneName != "") { 
+			_work = false; 
+		} else {
+			_calcMean = true;
+
+			IOobject mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
+			IOobject mean_p_rgh_Header("mean_p_rgh" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
+			IOobject mean_T_Header("mean_T" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
+			IOobject mean_Phi_header("mean_phi",mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
+
+			mean_U 		= new Foam::volVectorField(mean_U_Header,mesh,dimensionedVector("uu",U.dimensions(),vector::zero)); 
+			mean_p_rgh  	= new Foam::volScalarField(mean_p_rgh_Header,mesh,dimensionedScalar("uu",p_rgh.dimensions(),0)); ;
+			mean_T  	= new Foam::volScalarField(mean_U_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
+			mean_phi	= new Foam::surfaceScalarField(mean_U_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
+		}
 	}
 
 	// Specialized code for the nudging. 
@@ -97,31 +99,31 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 
 void EnergyBalanceTerms::update() {
-
-	if (_calcMean) { 
-		update_mean();
+	if (_work) { 
+		if (_calcMean) { 
+			update_mean();
+		}
 	}
-
 }
 
 
 void EnergyBalanceTerms::finalize() { 
+	if (_work) { 
+		if (_calcMean) { 
+			finalize_calculate_mean();
 
-	if (_calcMean) { 
-		finalize_calculate_mean();
+			// now should write in the first time step. 
+			const instantList& times  = mesh.time().times();
 
-		// now should write in the first time step. 
-		const instantList& times  = mesh.time().times();
+			runTime.setTime(times[0].value(),0); 
 
-		runTime.setTime(times[0].value(),0); 
+			mean_U->write();
+			mean_p_rgh->write();
+			mean_phi->write();
+			mean_T->write(); 
 
-		mean_U->write();
-		mean_p_rgh->write();
-		mean_phi->write();
-		mean_T->write(); 
-
+		}
 	}
-
 }
 
 
