@@ -1,4 +1,9 @@
-{
+
+
+
+
+
+/*{
 		Info << "Momentum balance - all domain" << endl;
 		Info << "-----------------------------" << endl;
                 Info << fvc::ddt(U)->weightedAverage(mesh.V()) << endl; 
@@ -16,7 +21,6 @@
               - g*rhok_tag)->weightedAverage(mesh.V()) << endl;
 
 
-// 
 
 		Info << "Momentum balance - ZONE " << endl;
 		Info << "-----------------------------" << endl;
@@ -52,4 +56,4 @@
               + fvc::grad(p_rgh)
               - g*rhok_tag))->weightedAverage(mesh.V()) << endl;
 
-}
+}*/

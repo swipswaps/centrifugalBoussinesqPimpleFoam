@@ -1,3 +1,4 @@
 CentrifugalBoussinesqPimpleFoam.C
+EnergyBalanceTerms.C
 
 EXE = $(FOAM_APPBIN)/centrifugalBoussinesqPimpleFoam

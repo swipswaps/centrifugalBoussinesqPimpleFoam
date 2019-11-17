@@ -1,4 +1,4 @@
-
+/*
 scalar IntegrateVector(const volScalarField & field) { 
 		scalar sfield = sum(field).value(); 
 		reduce(sfield,sumOp<scalar>());
@@ -42,5 +42,5 @@ tensor IntegrateTensor(const volTensorField& field) {
 		return sfield;
 }
 
-
+*/
 

@@ -50,6 +50,8 @@ Description
 #include "globalMeshData.H"
 #include "globalIndex.H"
 
+#include "EnergyBalanceTerms.H" 
+
 
 //#include "stdlib.h"
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -119,10 +121,12 @@ int main(int argc, char *argv[])
 
 
 
-    #include "EnergyInit.H"
+//    #include "EnergyInit.H"
 
 
+    // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+    EnergyBalanceTerms domainEnergyBalanceTerms(mesh,runTime,U,phi,AnisotropicDiffusion,p_rgh,rhok_tag,"");
 
 
 
@@ -227,7 +231,7 @@ int main(int argc, char *argv[])
         {
 		
           #include "UEqn.H"
-	       #include "TEqn.H"
+	  #include "TEqn.H"
 	    
 	        // --- Pressure corrector loop
             while (pimple.correct())
@@ -247,7 +251,8 @@ int main(int argc, char *argv[])
 		}
 
 		
-		#include "EnergyBalance.H"
+		domainEnergyBalanceTerms.update();
+		//#include "EnergyBalance.H"
 
 
 		runTime.write();
@@ -257,6 +262,8 @@ int main(int argc, char *argv[])
             
     }
 
+
+    domainEnergyBalanceTerms.finalize();
     Info<< "End\n" << endl;
 
     return 0;
