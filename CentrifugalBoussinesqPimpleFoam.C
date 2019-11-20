@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
 
     // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-    EnergyBalanceTerms domainEnergyBalanceTerms(mesh,runTime,U,phi,AnisotropicDiffusion,p_rgh,rhok_tag,"");
+    EnergyBalanceTerms domainEnergyBalanceTerms(mesh,runTime,U,phi,AnisotropicDiffusion,p_rgh,T,"");
 
 
 
