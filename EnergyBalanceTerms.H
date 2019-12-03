@@ -9,6 +9,19 @@
 
 #include "meshSearch.H"
 
+
+#define energy_variables(term)\
+	scalar	       mean_energy_##term; \
+	scalar	       perb_energy_##term;\
+	scalar	       total_energy_##term;
+	
+
+#define energy_variables_set_zero(term)\
+	mean_energy_##term =0; \
+	perb_energy_##term =0;\
+	total_energy_##term=0;
+
+
 using namespace Foam;
 
 /**
@@ -56,34 +69,54 @@ class EnergyBalanceTerms {
 	volScalarField &p_rgh;
 	volScalarField &T;
 
-	volScalarField zoneSelector;
 	bool calculateZone; 
+	volScalarField zoneSelector;
+
 
 	// ========================================================== Averages. 
 	volVectorField* mean_U;
 	volScalarField* mean_p_rgh;
 	volScalarField* mean_T;
 	surfaceScalarField* mean_phi;
+	
+	
+	energy_variables(dUdt); 
+	energy_variables(pressure); 
 
-	scalar	       mean_energy_dUdt; 
-	scalar	       mean_energy_Convection;
- 	scalar	       mean_energy_Diffusion; 
+	//scalar	       mean_energy_Convection;
+ 	//scalar	       mean_energy_Diffusion; 
 
+	volVectorField dmeanUdt;
+	volVectorField tagU;
+	volVectorField tagU_ls;
+
+	volScalarField tag_p_rgh;
+	volScalarField tag_T;
+//	surfaceScalarField tag_phi;
+
+	volTensorField reynoldsU; 
 
 	// ==========================================================
 	// ========================================================== Methods
 	// ==========================================================
 
+	// ------------ calculating the mean stage. 
 	void update_mean();
-	void finalize_calculate_mean();  
+	void finalize_calculate_mean();  	
+
+
+	// ------------ calculating the perturbations. 
+	void update_reynolds();
+	void update_energy_dUdt(); //- Calculates <U&ddt(U)> and the perturbation. 
+	void update_energy_Pressure(); //- Calculates the <U&grad(p_rgh)> and the perturbation part. 
+
+	void finalize_calculate_reynolds();   // finish calculation of the reynolds numbers. 
+	void finalize_energy_balance();
 
 
 	// ====================================== Temporal ======================
 		//- Calculates <ddt(U)>
 		inline vector momentum_dUdt(); 
-
-		//- Calculates <U&ddt(U)>
-		scalar energy_dUdt(); 
 
 	// ====================================== Convection ====================	
 		//- Calculates the <div(phi,U)>
@@ -103,8 +136,6 @@ class EnergyBalanceTerms {
 		//- Calculates the <grad(p_rgh)>
 		inline vector momentum_Pressure(); 
 
-		//- Calculates the <U&grad(p_rgh)> and accumulates it for the average. 
-		scalar energy_Pressure(); 
 
 	// ====================================== Nudging =======================
 
@@ -186,6 +217,11 @@ class EnergyBalanceTerms {
 			reduce(sfield,sumOp<tensor>());
 			return sfield;
 	}
+
+	// =======================================================================
+
+	//- Checks the equalities in the openFoam energy document (21.1.1)
+	void testingConvectionEqualities(); 
 
 };
 #endif
