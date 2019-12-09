@@ -254,6 +254,34 @@ int main(int argc, char *argv[])
 		domainEnergyBalanceTerms.update();
 		//#include "EnergyBalance.H"
 
+	{
+
+	
+		// Now adjust the nudging. 
+		forAll(NudgingTerm.internalField(), celli) {
+			label centercelli =  CenterLookup[celli]; 
+		
+			if (centercelli == -1) continue; // ignore phantom cells because of the cyclic/domain decompostion boundary cells. 
+			NudgingTerm.internalField()[celli].component(0) = nudgingFactor*(U.internalField()[centercelli].component(0)- Umean.internalField()[centercelli].component(0));
+		
+		}
+	
+		forAll(NudgingTerm.boundaryField(), celli)
+		{
+			NudgingTerm[celli].component(0) = 0; 
+			NudgingTerm[celli].component(1) = 0; 
+			NudgingTerm[celli].component(2) = 0; 
+		}	
+	
+
+
+
+
+
+
+	}
+
+
 
 		runTime.write();
 		Info<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"

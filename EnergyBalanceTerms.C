@@ -88,6 +88,48 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	energy_variables_set_zero(pressure);
 	energy_variables_set_zero(convection);
 
+	// ---------------------------------------------- Setting integration zone 
+	globalMeshData globalmeshdata(mesh); 
+	const globalIndex& globalindexer = globalmeshdata.globalPointNumbering();
+
+	// Specialized code for the nudging. 
+    	meshSearch meshSearch(mesh); 
+	scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;    
+
+	if (ZoneName != "") { 
+		label cellzoneID  =  mesh.cellZones().findZoneID(ZoneName);
+		const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
+		scalar tsize = cellzonelist.size() ;
+		reduce (tsize,sumOp<scalar>()); 
+
+		Info << "zone work has " << tsize << " cells " << endl;
+		forAll(cellzonelist,cellindx) {
+			label currentZoneIndx = cellzonelist[cellindx];
+	
+			if (globalmeshdata.parallel()) {
+				label lbl = -1;
+				if (globalindexer.isLocal(currentZoneIndx)) {
+					 lbl = globalindexer.toLocal(currentZoneIndx);
+		 			 zoneSelector[lbl] = mesh.V()[currentZoneIndx];	
+				}
+			}
+			else { 
+
+				zoneSelector[currentZoneIndx] = mesh.V()[currentZoneIndx];
+			}
+		}
+
+	} else { 
+		forAll(mesh.V(),cellindx) {
+			zoneSelector[cellindx] = mesh.V()[cellindx];
+		}
+	}
+
+	ZoneVolume = sum(zoneSelector).value(); 
+	reduce(ZoneVolume,sumOp<scalar>());
+
+	Info << " The zone volume is " << ZoneVolume <<endl;
+	// ---------------------------------------------- 
 
 
 	IOobject check_mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::READ_IF_PRESENT,IOobject::AUTO_WRITE);
@@ -157,43 +199,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	}
 
 
-	globalMeshData globalmeshdata(mesh); 
-	const globalIndex& globalindexer = globalmeshdata.globalPointNumbering();
 
-	// Specialized code for the nudging. 
-    	meshSearch meshSearch(mesh); 
-	scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;    
-
-	if (ZoneName != "") { 
-		label cellzoneID  =  mesh.cellZones().findZoneID(ZoneName);
-		const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
-		scalar tsize = cellzonelist.size() ;
-		reduce (tsize,sumOp<scalar>()); 
-
-		Info << "zone work has " << tsize << " cells " << endl;
-		forAll(cellzonelist,cellindx) {
-			label currentZoneIndx = cellzonelist[cellindx];
-	
-			if (globalmeshdata.parallel()) {
-		
-				label lbl = -1;
-
-				if (globalindexer.isLocal(currentZoneIndx)) {
-					 lbl = globalindexer.toLocal(currentZoneIndx);
-		 			 zoneSelector[lbl] = mesh.V()[currentZoneIndx];	
-				}
-			}
-			else { 
-
-				zoneSelector[currentZoneIndx] = mesh.V()[currentZoneIndx];
-			}
-		}
-
-	} else { 
-		forAll(mesh.V(),cellindx) {
-			zoneSelector[cellindx] = mesh.V()[cellindx];
-		}
-	}
 }
 
 
@@ -206,12 +212,11 @@ void EnergyBalanceTerms::update() {
 			tagU = U-(*mean_U); 
 			tag_p_rgh = p_rgh-(*mean_p_rgh);
 			tag_T     = T-(*mean_T);
-//			tag_phi  = phi-(*mean_phi);
-
 
 			update_reynolds();
 			update_energy_dUdt();
 			update_energy_Pressure();
+			update_energy_Convection();
 		}
 	}  //.. work
 }
@@ -260,7 +265,7 @@ void EnergyBalanceTerms::finalize_energy_balance() {
 	Info << "Termwise separation" << endl;
 	Info << "\t================= " << endl;
 	Info << "\tConvection of mean energy" << endl;
-	Info << "\t\t total = (x) + (y) + (z): " 	<< mean_energy_convection 
+	Info << "\t\t total = (x) + (y) + (z): " 	<< mean_energy_convection  << " (" << total_energy_convection << ") " 
 						 	<< " = " 
 							<< mean_convection_termwise.xx() << " + " << mean_convection_termwise.yy() << " + " << mean_convection_termwise.zz() << endl;
 
@@ -301,13 +306,12 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 	// ====================================== Convection ====================	
 
 //- Calculates the <U&div(phi,U)> and accumulates it for the average. 
-scalar EnergyBalanceTerms::energy_Convection() {
+void EnergyBalanceTerms::update_energy_Convection() {
 	
-	//scalar dt = mesh.time().deltaTValue();
+	scalar dt = mesh.time().deltaTValue();
+	total_energy_convection += Integrate( U&fvc::div(phi,U) )*dt;
 
-	//scalar local_balance = Integrate( U&fvc::div(phi,U) )*dt;
-	//mean_energy_Convection += local_balance;
-	return 0;
+
 }
 
 	// ====================================== Diffusion =====================
@@ -352,6 +356,8 @@ void  EnergyBalanceTerms::update_reynolds() {
 	reynoldsU += tagU*tagU*dt;
 }
 
+
+
 void EnergyBalanceTerms::finalize_calculate_reynolds() { 
 	scalar TotalTime = (runTime.endTime()-runTime.startTime()).value();
 	reynoldsU /= TotalTime;
@@ -389,10 +395,10 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
 	word lastTime(name(runTime.endTime().value()));
 	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
 
+
 	// get the dubar/dt = (u|1-u|0)/Time
 	Info << " Reading time step " << lastTime << endl;
 	volVectorField Ulast(IOobject("U",lastTime,mesh,IOobject::MUST_READ,IOobject::NO_WRITE), mesh);
-
 
 	volVectorField& meanU 		= *mean_U;
 	surfaceScalarField& meanphi 	= *mean_phi; 
@@ -402,12 +408,10 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
 	volScalarField barEk = 0.5*meanU&meanU;
 
 	tensor sqrdface_termwise = Integrate( fvc::grad(meanU*barEk) );
-	Info << "\t"  << sqrdface_termwise.xx() << "," << sqrdface_termwise.yy() << "," << sqrdface_termwise.zz() << " || " << orig << endl;
-
+	Info << "\t"  << sqrdface_termwise.xx() << "," << sqrdface_termwise.yy() << "," << sqrdface_termwise.zz() << " || " << orig  << endl;
 
 	// =========================================================================================================
 	Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi,0.5*meanU&meanU)> equality" << endl;
-	
 	scalar sqredterm = Integrate(fvc::div(meanphi,0.5*meanU&meanU));
 	Info << "\t"  << orig << " - " << sqredterm << " = " << orig-sqredterm << " frac " << (orig-sqredterm)/orig << endl;
 
@@ -419,6 +423,10 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
 	scalar sqrdfaceterm = Integrate(fvc::div(0.5*meanphi*fvc::interpolate(meanU&meanU)));
 	Info << "\t"  << orig << " - " << sqrdfaceterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
 
+	Info << " The <meanU&div(menaphi,meanU)> = <div(meanU*0.5*(meanU&meanU))> equality" << endl;
+	scalar sqrdterm = Integrate(fvc::div(0.5*meanU*(meanU&meanU)));
+	Info << "\t"  << orig << " - " << sqrdterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
+
 
 	//volTensorField zeroTensor(diffusionSource,barEk.dimensions());
 	tensor diffusionSource; 
@@ -427,7 +435,7 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
         	diffusionSource.component(i) = Integrate(AnisotropicDiffusion.component(0)*gradU.component(i)*gradU.component(i));
     	}	
 
-	Info << Integrate(meanU&(-fvc::laplacian(AnisotropicDiffusion,meanU))) << " || " << Integrate(AnisotropicDiffusion.component(0)*gradU&&gradU) << endl;
+	//Info << Integrate(meanU&(-fvc::laplacian(AnisotropicDiffusion,meanU))) << " || " << Integrate(AnisotropicDiffusion.component(0)*gradU&&gradU) << endl;
 	
 
 

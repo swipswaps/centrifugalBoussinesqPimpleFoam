@@ -76,6 +76,7 @@ class EnergyBalanceTerms {
 
 	bool calculateZone; 
 	volScalarField zoneSelector;
+	double ZoneVolume;
 
 
 	// ========================================================== Averages. 
@@ -116,6 +117,7 @@ class EnergyBalanceTerms {
 	void update_reynolds();
 	void update_energy_dUdt(); //- Calculates <U&ddt(U)> and the perturbation. 
 	void update_energy_Pressure(); //- Calculates the <U&grad(p_rgh)> and the perturbation part. 
+	void update_energy_Convection();  //- Calculates the total convection
 
 	void finalize_calculate_reynolds();   // finish calculation of the reynolds numbers. 
 	void finalize_energy_balance();
@@ -126,7 +128,7 @@ class EnergyBalanceTerms {
 	// ====================================== Convection ====================	
 
 		//- Calculates the <U&div(phi,U)> and accumulates it for the average. 
-		scalar energy_Convection(); 
+
 
 	// ====================================== Diffusion =====================
 
@@ -152,69 +154,45 @@ class EnergyBalanceTerms {
 
 	scalar Integrate(const volScalarField & field) { 
 			scalar sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<scalar>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 	scalar Integrate(const tmp<volScalarField> & field) { 
 			scalar sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<scalar>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 	vector Integrate(const volVectorField & field) { 
 			vector sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<vector>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 
 	vector Integrate(const tmp<volVectorField> & field) { 
 			vector sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<vector>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 	tensor Integrate(const tmp<volTensorField> & field) { 
 			tensor sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<tensor>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 	tensor Integrate(const volTensorField& field) { 
 			tensor sfield;
-			if(calculateZone){
-				sfield = sum(field*zoneSelector).value(); 
-			} else { 
-				sfield = sum(field).value(); 
-			}
+			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<tensor>());
-			return sfield;
+			return sfield/ZoneVolume;
 	}
 
 	// =======================================================================
