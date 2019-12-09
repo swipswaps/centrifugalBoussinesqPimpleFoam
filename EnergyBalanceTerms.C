@@ -86,6 +86,8 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 	energy_variables_set_zero(dUdt); 
 	energy_variables_set_zero(pressure);
+	energy_variables_set_zero(convection);
+
 
 
 	IOobject check_mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::READ_IF_PRESENT,IOobject::AUTO_WRITE);
@@ -117,16 +119,22 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 		// calculate the mean fields. 
 		volVectorField& meanU 		= *mean_U;
+		surfaceScalarField& meanphi     = *mean_phi;
+		volScalarField barEk = 0.5*meanU&meanU;
 
 		mean_energy_dUdt 	= Integrate( (meanU) & ((Ulast-U)/timeSpan)   );
 		mean_energy_pressure 	= Integrate( (meanU) & fvc::grad(*mean_p_rgh) );
+		mean_energy_convection  = Integrate(meanU&fvc::div(meanphi,meanU));
 
+
+		mean_convection_termwise = Integrate( fvc::grad(meanU*barEk) );
 
 		// Tests for the later calculation of the different single terms. 
-		//testingConvectionEqualities();
+		testingConvectionEqualities();
 		
 	} else {
 		Info << "calculate mean " << endl;
+		Foam::Info<< "Time = " << runTime.timeName() << Foam::endl;
 		if (ZoneName != "") { 
 			_work = false; 
 		} else {
@@ -138,7 +146,8 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 			IOobject mean_T_Header("mean_T" ,mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
 			IOobject mean_Phi_Header("mean_phi",mesh.time().timeName(),mesh,IOobject::NO_READ,IOobject::NO_WRITE);
 
-			mean_U 		= new Foam::volVectorField(mean_U_Header,mesh,dimensionedVector("uu",U.dimensions(),vector::zero)); 
+			scalar dt = mesh.time().deltaTValue();
+			mean_U 		= new Foam::volVectorField(mean_U_Header,U*dt) ; //mesh,dimensionedVector("uu",U.dimensions(),vector::zero)); 
 			mean_p_rgh  	= new Foam::volScalarField(mean_p_rgh_Header,mesh,dimensionedScalar("uu",p_rgh.dimensions(),0)); ;
 			mean_T  	= new Foam::volScalarField(mean_T_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
 			mean_phi	= new Foam::surfaceScalarField(mean_Phi_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
@@ -147,37 +156,44 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		}
 	}
 
+
+	globalMeshData globalmeshdata(mesh); 
+	const globalIndex& globalindexer = globalmeshdata.globalPointNumbering();
+
 	// Specialized code for the nudging. 
     	meshSearch meshSearch(mesh); 
 	scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;    
 
+	if (ZoneName != "") { 
+		label cellzoneID  =  mesh.cellZones().findZoneID(ZoneName);
+		const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
+		scalar tsize = cellzonelist.size() ;
+		reduce (tsize,sumOp<scalar>()); 
 
-
-/*
-	label cellzoneID  =  mesh.cellZones().findZoneID("Work");
-	const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
-	scalar tsize = cellzonelist.size() ;
-	reduce (tsize,sumOp<scalar>()); 
-
-	Info << "zone work has " << tsize << " cells " << endl;
-	forAll(cellzonelist,cellindx) {
-		label currentZoneIndx = cellzonelist[cellindx];
+		Info << "zone work has " << tsize << " cells " << endl;
+		forAll(cellzonelist,cellindx) {
+			label currentZoneIndx = cellzonelist[cellindx];
 	
-		if (globalmeshdata.parallel()) {
+			if (globalmeshdata.parallel()) {
 		
-			label lbl = -1;
+				label lbl = -1;
 
-			if (globalindexer.isLocal(currentZoneIndx)) {
-				 lbl = globalindexer.toLocal(currentZoneIndx);
-	 			 zoneSelector[lbl] = mesh.V()[currentZoneIndx];	
+				if (globalindexer.isLocal(currentZoneIndx)) {
+					 lbl = globalindexer.toLocal(currentZoneIndx);
+		 			 zoneSelector[lbl] = mesh.V()[currentZoneIndx];	
+				}
+			}
+			else { 
+
+				zoneSelector[currentZoneIndx] = mesh.V()[currentZoneIndx];
 			}
 		}
-		else { 
-			zoneSelector[currentZoneIndx] = mesh.V()[currentZoneIndx];
+
+	} else { 
+		forAll(mesh.V(),cellindx) {
+			zoneSelector[cellindx] = mesh.V()[cellindx];
 		}
 	}
-*/
-
 }
 
 
@@ -195,6 +211,7 @@ void EnergyBalanceTerms::update() {
 
 			update_reynolds();
 			update_energy_dUdt();
+			update_energy_Pressure();
 		}
 	}  //.. work
 }
@@ -221,43 +238,35 @@ void EnergyBalanceTerms::finalize() {
 }
 
 
-vector EnergyBalanceTerms::momentum_dUdt() {
-	return Integrate(fvc::ddt(U));
-}
-
-
 void EnergyBalanceTerms::finalize_energy_balance() { 
+
+	scalar dt = mesh.time().deltaTValue();
 	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
+
+
 	
-	perb_energy_dUdt  /= timeSpan.value(); 
-	total_energy_dUdt /= timeSpan.value(); 
+	energy_variables_finalize(dUdt,timeSpan.value()+dt); 
+	energy_variables_finalize(pressure,timeSpan.value()+dt); 
+	energy_variables_finalize(convection,timeSpan.value()+dt); 
 
-	perb_energy_pressure  /= timeSpan.value(); 
-	total_energy_pressure /= timeSpan.value(); 
-
-	Info << "Test - Energy - Temporal " << endl;
-	Info << "================= " << endl;
-	Info << "\t" << total_energy_dUdt << " = " << mean_energy_dUdt << " + " << perb_energy_dUdt << endl;
-
-	Info << "Test - Pressure - Tempora " << endl; 
-	Info << "\t" << total_energy_pressure << " = " << mean_energy_pressure << " + " << perb_energy_pressure << endl;
+	Info << "Total = Mean + Perb" << endl;
+	Info << "\t================= " << endl;
+	Info << "\tTemporal " << endl;
+	Info << "\t\t" << total_energy_dUdt << " = " << mean_energy_dUdt << " + " << perb_energy_dUdt << endl;
+	Info << "\tPressure" << endl; 
+	Info << "\t\t" << total_energy_pressure << " = " << mean_energy_pressure << " + " << perb_energy_pressure << endl;
 
 
+	Info << "Termwise separation" << endl;
+	Info << "\t================= " << endl;
+	Info << "\tConvection of mean energy" << endl;
+	Info << "\t\t total = (x) + (y) + (z): " 	<< mean_energy_convection 
+						 	<< " = " 
+							<< mean_convection_termwise.xx() << " + " << mean_convection_termwise.yy() << " + " << mean_convection_termwise.zz() << endl;
 
-	//Info << "Test - Energy - Mean Balance " << endl;
-	//Info << "================= " << endl;
+	
 
-	//volVectorField& meanU 		= *mean_U;
-	//surfaceScalarField& meanphi 	= *mean_phi; 
-	//volScalarField barEk = 0.5*meanU&meanU;
-
-	// Mean energy convection. 
-	//tensor sqrdface_termwise = Integrate( fvc::grad(meanU*barEk) );
-	//Info << "\t The mean energy convection:  (total  " << Integrate(meanU&fvc::div(meanphi,meanU))  << ")" << endl; 
-	//Info << "\t\t x-flux: meanU*meanEk " << sqrdface_termwise.xx() << endl;
-	//Info << "\t\t y-flux: meanU*meanEk " << sqrdface_termwise.yy() << endl; 
-	//Info << "\t\t z-flux: meanU*meanEk " << sqrdface_termwise.zz() << endl;  
-
+	
 	// Mean reynolds convection. 
 	//Info << "\t The mean reynold flux " << Integrate(fvc::div( reynoldsU& meanU )) << endl; 
 
@@ -290,10 +299,6 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 
 
 	// ====================================== Convection ====================	
-//- Calculates the <div(phi,U)>
-vector EnergyBalanceTerms::momentum_Convection() {
-	return Integrate(fvc::div(phi,U)); 
-}
 
 //- Calculates the <U&div(phi,U)> and accumulates it for the average. 
 scalar EnergyBalanceTerms::energy_Convection() {
@@ -306,32 +311,20 @@ scalar EnergyBalanceTerms::energy_Convection() {
 }
 
 	// ====================================== Diffusion =====================
-//- Calculates the <laplacian(AnisitropicDiffusion,U)>
-vector EnergyBalanceTerms::momentum_Diffusion() {
-	return Integrate(fvc::laplacian(AnisotropicDiffusion,U)); 
-}
 
 //- Calculates the <U&laplacian(AnisitropicDiffusion,U)> and accumulates it for the average. 
 scalar EnergyBalanceTerms::energy_Diffusion() {
 
-//	scalar dt = mesh.time().deltaTValue();
-
-//	scalar local_balance = Integrate( U&fvc::laplacian(AnisotropicDiffusion,U) )*dt;
-//	mean_energy_Diffusion += local_balance;
+	//	scalar dt = mesh.time().deltaTValue();
+	//	scalar local_balance = Integrate( U&fvc::laplacian(AnisotropicDiffusion,U) )*dt;
+	//	mean_energy_Diffusion += local_balance;
 
 	return 0;
 }
 
 	// ====================================== Pressure  =====================
-//- Calculates the <grad(p_rgh)>
-vector EnergyBalanceTerms::momentum_Pressure() {
-	return Integrate(fvc::grad(p_rgh)); 
-}
 
 	// ====================================== Nudging =======================
-
-
-
 
 
 	// ==========================================================
@@ -345,6 +338,8 @@ void EnergyBalanceTerms::update_mean() {
 	volScalarField& meanP 		= *mean_p_rgh;
 	surfaceScalarField& meanphi 	= *mean_phi; 
 	volScalarField& meanT  		= *mean_T; 
+
+	Info << meanU[0].component(0) << " "  << U[0].component(0) << "*" << dt << endl;
 
 	meanU   += U*dt; 
 	meanP   += p_rgh*dt; 
@@ -364,7 +359,8 @@ void EnergyBalanceTerms::finalize_calculate_reynolds() {
 
 void EnergyBalanceTerms::finalize_calculate_mean() {
 
-	scalar TotalTime = (runTime.endTime()-runTime.startTime()).value();
+	scalar dt = mesh.time().deltaTValue();
+	scalar TotalTime = (runTime.endTime()-runTime.startTime()).value()+dt;
 
 	Info << " Total running time is " << TotalTime << endl;
 	volVectorField& meanU 		= *mean_U;
@@ -390,13 +386,39 @@ void EnergyBalanceTerms::finalize_calculate_mean() {
 //- Checks the equalities in the openFoam energy document (21.1.1)
 void EnergyBalanceTerms::testingConvectionEqualities() { 
 	// Checks if:  \bar{U}\&fvc::div(\bar{phi},\bar{U})> = <fvc::div(\bar{phi},0.5*\bar{U}\&\bar{U})>
+	word lastTime(name(runTime.endTime().value()));
+	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
+
+	// get the dubar/dt = (u|1-u|0)/Time
+	Info << " Reading time step " << lastTime << endl;
+	volVectorField Ulast(IOobject("U",lastTime,mesh,IOobject::MUST_READ,IOobject::NO_WRITE), mesh);
+
+
 	volVectorField& meanU 		= *mean_U;
 	surfaceScalarField& meanphi 	= *mean_phi; 
+
+	scalar orig = Integrate(meanU&fvc::div(meanphi,meanU));
 
 	volScalarField barEk = 0.5*meanU&meanU;
 
 	tensor sqrdface_termwise = Integrate( fvc::grad(meanU*barEk) );
-	Info << "\t"  << sqrdface_termwise.xx() << "," << sqrdface_termwise.yy() << "," << sqrdface_termwise.zz() << " || " << Integrate(meanU&fvc::div(meanphi,meanU)) << endl;
+	Info << "\t"  << sqrdface_termwise.xx() << "," << sqrdface_termwise.yy() << "," << sqrdface_termwise.zz() << " || " << orig << endl;
+
+
+	// =========================================================================================================
+	Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi,0.5*meanU&meanU)> equality" << endl;
+	
+	scalar sqredterm = Integrate(fvc::div(meanphi,0.5*meanU&meanU));
+	Info << "\t"  << orig << " - " << sqredterm << " = " << orig-sqredterm << " frac " << (orig-sqredterm)/orig << endl;
+
+	Info << " The <meanU&div(menaphi,meanU)> = <meanU&grad(meanphi*interpolate(meanU))> equality" << endl;
+	scalar faceterm = Integrate(meanU&fvc::div(meanphi*fvc::interpolate(meanU)));
+	Info << "\t"  << orig << " - " << faceterm << " = " << orig-faceterm << " frac " << (orig-faceterm)/orig << endl;
+
+	Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi*0.5*interpolate(meanU&meanU))> equality" << endl;
+	scalar sqrdfaceterm = Integrate(fvc::div(0.5*meanphi*fvc::interpolate(meanU&meanU)));
+	Info << "\t"  << orig << " - " << sqrdfaceterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
+
 
 	//volTensorField zeroTensor(diffusionSource,barEk.dimensions());
 	tensor diffusionSource; 
@@ -409,19 +431,6 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
 	
 
 
-	// =========================================================================================================
-	//Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi,0.5*meanU&meanU)> equality" << endl;
-	//scalar orig = Integrate(meanU&fvc::div(meanphi,meanU));
-	//scalar sqredterm = Integrate(fvc::div(meanphi,0.5*meanU&meanU));
-	//Info << "\t"  << orig << " - " << sqredterm << " = " << orig-sqredterm << " frac " << (orig-sqredterm)/orig << endl;
-
-	//Info << " The <meanU&div(menaphi,meanU)> = <meanU&grad(meanphi*interpolate(meanU))> equality" << endl;
-	//scalar faceterm = Integrate(meanU&fvc::div(meanphi*fvc::interpolate(meanU)));
-	//Info << "\t"  << orig << " - " << faceterm << " = " << orig-faceterm << " frac " << (orig-faceterm)/orig << endl;
-
-	//Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi*0.5*interpolate(meanU&meanU))> equality" << endl;
-	//scalar sqrdfaceterm = Integrate(fvc::div(0.5*meanphi*fvc::interpolate(meanU&meanU)));
-	//Info << "\t"  << orig << " - " << sqrdfaceterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
 	// =========================================================================================================
 }
 

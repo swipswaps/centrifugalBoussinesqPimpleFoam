@@ -22,6 +22,11 @@
 	total_energy_##term=0;
 
 
+#define energy_variables_finalize(term,timespan)\
+	perb_energy_##term  /=timespan;\
+	total_energy_##term /=timespan;
+
+
 using namespace Foam;
 
 /**
@@ -79,12 +84,14 @@ class EnergyBalanceTerms {
 	volScalarField* mean_T;
 	surfaceScalarField* mean_phi;
 	
-	
+	// ------------ mean, perb, total 	
 	energy_variables(dUdt); 
 	energy_variables(pressure); 
+	energy_variables(convection); 
 
-	//scalar	       mean_energy_Convection;
- 	//scalar	       mean_energy_Diffusion; 
+
+	// ----------- terms termwise - mean 
+	tensor mean_convection_termwise;
 
 	volVectorField dmeanUdt;
 	volVectorField tagU;
@@ -115,26 +122,18 @@ class EnergyBalanceTerms {
 
 
 	// ====================================== Temporal ======================
-		//- Calculates <ddt(U)>
-		inline vector momentum_dUdt(); 
 
 	// ====================================== Convection ====================	
-		//- Calculates the <div(phi,U)>
-		inline vector momentum_Convection(); 
 
 		//- Calculates the <U&div(phi,U)> and accumulates it for the average. 
 		scalar energy_Convection(); 
 
 	// ====================================== Diffusion =====================
-		//- Calculates the <laplacian(AnisitropicDiffusion,U)>
-		inline vector momentum_Diffusion(); 
 
 		//- Calculates the <U&laplacian(AnisitropicDiffusion,U)> and accumulates it for the average. 
 		scalar energy_Diffusion(); 
 
 	// ====================================== Pressure  =====================
-		//- Calculates the <grad(p_rgh)>
-		inline vector momentum_Pressure(); 
 
 
 	// ====================================== Nudging =======================
