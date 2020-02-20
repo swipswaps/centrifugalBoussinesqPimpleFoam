@@ -159,7 +159,8 @@ int main(int argc, char *argv[])
 		centercelli = searchEngine.findCell(position,centercelli); //findCell(position);
 		
 		if (centercelli == -1) { 
-			Sout << " Celll not found  in processor "  << Pstream::myProcNo() << ": At cell " << mesh.C().internalField()[celli] << " label " << celli << " looking for position " << position << " Not Found!" << endl;
+			Sout << " Celll not found  in processor "  << Pstream::myProcNo() << ": At cell " 
+			     << mesh.C().internalField()[celli] << " label " << celli << " looking for position " << position << " Not Found!" << endl;
 		}
 		CenterLookup[celli] = centercelli; 
 		
@@ -256,6 +257,17 @@ int main(int argc, char *argv[])
 
 	{
 
+	wordList direction(3);
+	direction[0] = "x";
+	direction[1] = "y";
+	direction[2] = "z";
+
+
+	wordList component(3);
+	component[0] = "u";
+	component[1] = "v";
+	component[2] = "w";
+
 	
 		// Now adjust the nudging. 
 		forAll(NudgingTerm.internalField(), celli) {
@@ -272,13 +284,120 @@ int main(int argc, char *argv[])
 			NudgingTerm[celli].component(1) = 0; 
 			NudgingTerm[celli].component(2) = 0; 
 		}	
-	
+
+
+		Info << "Total balance " <<  (fvc::ddt(U) + fvc::div(phi, U)+ NudgingTerm- fvc::laplacian(AnisotropicDiffusion,U)  + fvc::grad(p_rgh) - g*rhok_tag)->weightedAverage(mesh.V()) << endl;
+		Info << "Total Enegy balance " <<  (U&(fvc::ddt(U) + fvc::div(phi, U)+ NudgingTerm- fvc::laplacian(AnisotropicDiffusion,U)  + fvc::grad(p_rgh) - g*rhok_tag))->weightedAverage(mesh.V()) << endl;
+
+		dimensionedScalar dt_nonlin = (U&(fvc::ddt(U) + fvc::div(phi, U)))->weightedAverage(mesh.V());
+		Info << "--- Term wise --- " << endl;
+		Info << "dt  " << (U&fvc::ddt(U))->weightedAverage(mesh.V()) <<endl;
+		Info << "convection  " << (U&fvc::div(phi, U))->weightedAverage(mesh.V()) <<endl;
+		Info << "\t convection2 " << (U&fvc::div(U*U))->weightedAverage(mesh.V()) << endl;
+		Info << "\t convection3 " << (fvc::div(phi,0.5*U& U))->weightedAverage(mesh.V()) << endl;
+		Info << "\t convection4 " << (fvc::div(U*(0.5*U& U)))->weightedAverage(mesh.V()) << endl;
+		Info << "Nudging  " << (U&NudgingTerm)->weightedAverage(mesh.V()) <<endl;
+		Info << "Laplacian " << -(U&fvc::laplacian(AnisotropicDiffusion,U))->weightedAverage(mesh.V())<< endl;
+		Info << "pressure " << (U&fvc::grad(p_rgh))->weightedAverage(mesh.V()) << endl;
+		Info << "buoyancy " << (-U&g*rhok_tag)->weightedAverage(mesh.V())<< endl;
+
+		Info << "--- Cell wise --- " << endl; 
+		volVectorField phiU(IOobject("phiU",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE),fvc::div(phi,U)); 
+		volVectorField divUU(IOobject("divUU",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE),fvc::div(phi*fvc::interpolate(U)));
+		volTensorField divUUterms(IOobject("gradUU",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE),fvc::grad(phi*fvc::interpolate(U)));  
+		volTensorField uu = U*U;
+		phiU.write();
+		divUU.write();
+		
+		Info << "--- Momentum --- " << endl; 
+		Info << (fvc::div(phi, U))->weightedAverage(mesh.V()) <<endl;
+		Info << (fvc::div(U*U))->weightedAverage(mesh.V()) <<endl;
+
+		Info << (fvc::div(phi, U))->component(0)->weightedAverage(mesh.V()) <<endl;
+		Info << (fvc::div(U*U)   )->component(0)->weightedAverage(mesh.V()) <<endl;
+
+		volTensorField gradUU = fvc::grad(U);
+
+
+		int global=0;
+		for (int i=0 ; i<3 ;i++) {
+			for (int j=0 ; j<3 ; j++) { 
+				gradUU.component(global) = fvc::grad(uu.component(global))->component(j);
+				global++; 
+			}
+		}
+
+
+		forAll(mesh.C(),celli) { 
+			Info << mesh.C()[celli] << ",";
+			Info << mesh.V()[celli] << ",";
+			Info << celli << "," << phiU[celli].component(0) << "," <<divUU[celli].component(0) << "," ;
+			for (int i=0 ; i < 9 ; i++ ) {
+				Info << divUUterms[celli].component(i); 
+				if (i<8) Info << ","; 
+			}
+			Info << endl;
+
+
+		//	Info << " div(phi,U)->component(0) = d(uu)/dx+d(vu)/dy+d(wu)/dz =  " << phiU[celli].component(0) << " || ";
+		//	Info << "fvc::grad(U*U): d(uu)/dx+d(vu)/dy+d(wu)/dz =" << gradUU[celli].component(0) << "+" <<  gradUU[celli].component(1) << "+" << gradUU[celli].component(2) << " = " << 
+		//			gradUU[celli].component(0) + gradUU[celli].component(1) + gradUU[celli].component(2) << endl;
+		}
+
+		label cellid = 23400;
+		// Now calculate the divergance for cell 23400 by hand using the gauss theorem. 
+
+		// Then calculate the grad for cell 23400  by hand using the gauss theorem. 
+
+
+		
 
 
 
+		/*
+		volVectorField Ekcomponents = U;
+		Ekcomponents.component(0) = 0.5*uu.component(0);
+		Ekcomponents.component(1) = 0.5*uu.component(4);
+		Ekcomponents.component(2) = 0.5*uu.component(8);
 
 
+		Info << "--- energy --- " << endl; 
+		for (int i=0 ; i<3 ;i++) {
+			Info << "All convection  " << (U.component(i)*fvc::div(phi, U)->component(i))->weightedAverage(mesh.V()) <<endl;
+			Info << "\t  " << (U.component(i)*fvc::div(phi*fvc::interpolate(U))->component(i))->weightedAverage(mesh.V()) <<endl;
+			for (int j=0 ; j<3 ; j++) { 
+				Info << "\t\t "<< direction[i] << direction[j] << (U.component(i)*fvc::grad(phi*fvc::interpolate(U))->component(j))->weightedAverage(mesh.V()) <<endl;
+			}
 
+		}
+
+
+		Info << "Ek " << (fvc::div(U*Ekcomponents))->weightedAverage(mesh.V()) <<endl;
+
+		int global=0;
+		for (int i=0 ; i<3 ;i++) {
+			for (int j=0 ; j<3 ; j++) { 
+				Info << "Momentum " << direction[i] << direction[j] << ": " << fvc::grad(uu.component(global))->component(i)->weightedAverage(mesh.V()) << endl;
+				global++; 
+
+			}
+
+
+		}
+		Info << "\t\t -- " <<endl;
+		global=0;
+		for (int i=0 ; i<3 ;i++) 
+			for (int j=0 ; j<3 ; j++) { 
+				Info << "Energy " << direction[i] << direction[j] << ": " << (U.component(j)*fvc::grad(uu.component(global))->component(i))->weightedAverage(mesh.V()) << " || " << endl;
+				Info << "\t" << fvc::grad((U*Ekcomponents)->component(global))->component(i)->weightedAverage(mesh.V()) << endl;
+				global++; 
+
+		}
+				
+
+		Info << (U&(fvc::div(phi, U)))->weightedAverage(mesh.V()) <<endl;
+		Info << (U&(fvc::div(U*U)))->weightedAverage(mesh.V()) <<endl;
+*/
 	}
 
 
