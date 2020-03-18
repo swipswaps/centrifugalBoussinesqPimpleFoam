@@ -263,6 +263,7 @@ void EnergyBalanceTerms::update() {
 			update_energy_Convection();
 			update_energy_Nudging();  
 			update_energy_Potential();
+			update_energy_Diffusion();
 
 		}
 	}  //.. work
