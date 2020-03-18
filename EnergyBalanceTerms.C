@@ -62,6 +62,11 @@
 	zeroScalar(perb_energy_##variable,dims),\
 	zeroScalar(total_energy_##variable,dims)
 
+#define zeroEnergyTensorTerms(variable,dims) \
+	zeroTensor(mean_energy_##variable,dims),\
+	zeroTensor(perb_energy_##variable,dims),\
+	zeroTensor(total_energy_##variable,dims)
+
 EnergyBalanceTerms::EnergyBalanceTerms(
 				fvMesh& mesh,
 				Time&   runTime,
@@ -103,6 +108,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		)
 	), 
 	beta(beta), 
+	alpha(1e-3),
 	zeroScalar(zoneSelector,dimless) ,
 	zeroVector(dmeanUdt,U.dimensions()),
 	zeroVector(tagU,U.dimensions()),
@@ -112,7 +118,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroScalar(tag_phi,phi.dimensions()) , 
 	CenterLookup(mesh.C().internalField().size()) ,
 	zeroEnergyScalarTerms(dUdt,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyScalarTerms(diffusion,dimVelocity*dimVelocity/dimTime),
+	zeroEnergyTensorTerms(diffusion,dimVelocity*dimVelocity/dimTime),
 	zeroEnergyScalarTerms(pressure,dimVelocity*dimVelocity/dimTime),
 	zeroEnergyScalarTerms(nudging,dimVelocity*dimVelocity/dimTime),
 	zeroEnergyScalarTerms(potential,dimVelocity*dimVelocity/dimTime),
@@ -145,8 +151,8 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		}
 		CenterLookup[celli] = centercelli; 
 	}
-	// --- Specialized code for the nudging : end
 
+	// --- Specialized code for the nudging : end
 	if (ZoneName != "") { 
 		label cellzoneID  =  mesh.cellZones().findZoneID(ZoneName);
 		const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
@@ -215,14 +221,12 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 		mean_energy_dUdt 	= (meanU) & ((Ulast-U)/timeSpan);
 		mean_energy_pressure 	= (meanU) & fvc::grad(*mean_p_rgh);
-		mean_energy_nudging	= 1e-3*meanU &(U_background-meanUc);
+		mean_energy_nudging	= alpha*meanU &(U_background-meanUc);
 //		total_energy_potential  = 
 		
 		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU)();
 
 
-		// Tests for the later calculation of the different single terms. 
-		testingConvectionEqualities();
 		
 	} else {
 		Info << "calculate mean on global zone" << endl;
@@ -257,6 +261,9 @@ void EnergyBalanceTerms::update() {
 			update_energy_dUdt();
 			update_energy_Pressure();
 			update_energy_Convection();
+			update_energy_Nudging();  
+			update_energy_Potential();
+
 		}
 	}  //.. work
 }
@@ -275,13 +282,13 @@ void EnergyBalanceTerms::finalize() {
 			mean_T->write(); 
 
 		} else { 
-			finalize_energy_balance(); 
+			finalize_calculate_perb(); 
 		}
 	}
 }
 
 
-void EnergyBalanceTerms::finalize_energy_balance() { 
+void EnergyBalanceTerms::finalize_calculate_perb() { 
 
 	scalar dt = mesh.time().deltaTValue();
 	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
@@ -343,10 +350,67 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 } 
 
 
+	// ====================================== pressure ====================	
+void  EnergyBalanceTerms::update_energy_Diffusion() {
+	
+	scalar dt = mesh.time().deltaTValue();
+
+	// first derivative. 	
+	volTensorField KgradU = fvc::grad(U);
+	volTensorField KgradUtag = fvc::grad(tagU);  
+
+	forAll(mesh.C(),celli) {
+		for (int c=0;c<9;c++) { 
+			KgradU[celli].component(c)    *= AnisotropicDiffusion[celli].component(c); 			
+			KgradUtag[celli].component(c) *= AnisotropicDiffusion[celli].component(c); 			
+		}
+	}
+
+	volTensorField diffusion(
+			            IOobject		
+			            (			
+			                    "diffusion",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
+	volTensorField diffusionTag(
+			            IOobject		
+			            (			
+			                    "diffusion",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
+	label component = 0;
+	for(label i=0;i<3;i++) { 
+		for (label j=0;j<3;j++,component++) { 
+			diffusion.component(component) = fvc::grad(KgradU.component(component))->component(j);
+			diffusionTag.component(component) = fvc::grad(KgradUtag.component(component))->component(j);
+		}
+	}
+
+	perb_energy_diffusion   += (diffusionTag*dt)();
+	total_energy_diffusion  += (diffusion*dt)();
+}
 
 	// ====================================== Convection ====================	
-
-//- Calculates the <U&div(phi,U)> and accumulates it for the average. 
 void EnergyBalanceTerms::update_energy_Convection() {
 	
 	scalar dt = mesh.time().deltaTValue();
@@ -390,8 +454,8 @@ void EnergyBalanceTerms::update_energy_Nudging() {
 	volVectorField& tagUc = setUc(tagU)(); 
 	volVectorField& Uc = setUc(U)(); 
 
-	perb_energy_nudging  += (1e-3*tagU&tagUc);
-	total_energy_nudging += 1e-3*U&(U_background-Uc);
+	perb_energy_nudging  += (alpha*tagU&tagUc);
+	total_energy_nudging +=  alpha*U&(U_background-Uc);
 
 }
 
@@ -511,7 +575,6 @@ tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> 
 		}
 	}
 	return ioFluxTensorPtr;
-
 }
 
 tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
@@ -525,6 +588,23 @@ tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& 
 // ==================================================================================================================================
 
 
+void EnergyBalanceTerms::checkMomentumBalance_Timestep() { 
+	
+	Info << "\t\tMomentum balance for time step " << runTime.timeName() <<  endl;
+	Info << "---------------------------------------------------------------------" << endl; 
+
+	volVectorField& Uc = setUc(U)();
+	volVectorField NudgingTerm = alpha*(U_background-Uc);
+	
+	vector TotalMomentumIntegration = Integrate(fvc::ddt(U) + fvc::div(phi, U) + NudgingTerm - fvc::laplacian(AnisotropicDiffusion,U) + fvc::grad(p_rgh) + g*beta*T);
+	Info << "\t Momentum conservation " << TotalMomentumIntegration<< endl;
+
+
+
+}
+
+
+/*
 //- Checks the equalities in the openFoam energy document (21.1.1)
 void EnergyBalanceTerms::testingConvectionEqualities() { 
 	// Checks if:  \bar{U}\&fvc::div(\bar{phi},\bar{U})> = <fvc::div(\bar{phi},0.5*\bar{U}\&\bar{U})>
@@ -572,10 +652,7 @@ void EnergyBalanceTerms::testingConvectionEqualities() {
     	}	
 
 	//Info << Integrate(meanU&(-fvc::laplacian(AnisotropicDiffusion,meanU))) << " || " << Integrate(AnisotropicDiffusion.component(0)*gradU&&gradU) << endl;
-	
-
-
 	// =========================================================================================================
 }
-
+*/
 

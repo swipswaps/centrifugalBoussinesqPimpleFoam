@@ -76,6 +76,7 @@ class EnergyBalanceTerms {
 	volVectorField U_background; // The background wind. In the centerfuginal code it is referred to as Umean. 
 	uniformDimensionedVectorField g; 
 	dimensionedScalar beta;
+	const scalar alpha; // the nudging coefficient. 1e-3
 	
 	bool calculateZone; 
 	volScalarField zoneSelector;
@@ -102,7 +103,7 @@ class EnergyBalanceTerms {
 
 	// - Calculated fields - mean 
 	energy_fields(Scalar,dUdt);    		// dt terms. 
-	energy_fields(Scalar,diffusion);    	// diffusion terms.
+	energy_fields(Tensor,diffusion);    	// diffusion terms.
 	energy_fields(Scalar,pressure);    	// pressure terms.
 	energy_fields(Scalar,nudging);    	// nudging terms.
 	energy_fields(Scalar,potential);    	// potential energy terms.        
@@ -124,7 +125,6 @@ class EnergyBalanceTerms {
 
 	// ------------ calculating the mean stage. 
 	void update_mean();
-	void finalize_calculate_mean();  	
 
 
 	// ------------ calculating the perturbations. 
@@ -133,13 +133,11 @@ class EnergyBalanceTerms {
 	void update_energy_Nudging();  //- Calculates the nudging force. 
 	void update_energy_Potential();  //- Calculates the potential energy 
 	void update_energy_Convection();  //- Calculates the total convection
+	void update_energy_Diffusion();  //- Calculates the diffusion
 
 
-	void finalize_energy_balance();
-	void finalize_energy_Convection();  //- Calculates the total convection
-
-
-
+	void finalize_calculate_perb();
+	void finalize_calculate_mean();  	
 
 	// ==========================================================
 	// ========================================================== Variables. 
@@ -215,8 +213,9 @@ class EnergyBalanceTerms {
 
 	// =======================================================================
 
-	//- Checks the equalities in the openFoam energy document (21.1.1)
-	void testingConvectionEqualities(); 
+	// Checking the momentum balance of this timestep. 
+	void checkMomentumBalance_Timestep();
+	
 
 };
 #endif
