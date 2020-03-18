@@ -211,14 +211,14 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		volVectorField& meanU 		= *mean_U;
 		surfaceScalarField& meanphi     = *mean_phi;
 		volScalarField barEk = 0.5*meanU&meanU;
-		volVectorField meanUc = setUc(meanU);
+		volVectorField& meanUc = setUc(meanU)();
 
 		mean_energy_dUdt 	= (meanU) & ((Ulast-U)/timeSpan);
 		mean_energy_pressure 	= (meanU) & fvc::grad(*mean_p_rgh);
 		mean_energy_nudging	= 1e-3*meanU &(U_background-meanUc);
 //		total_energy_potential  = 
 		
-		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU);
+		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU)();
 
 
 		// Tests for the later calculation of the different single terms. 
@@ -356,23 +356,23 @@ void EnergyBalanceTerms::update_energy_Convection() {
 
 	// ----------
 	// u div(u*u) 
-	energy_fullFlux   += calculateEnergyFlux(phi, U, U)*dt;
+	energy_fullFlux   += calculateEnergyFlux(phi, U, U)()*dt;
 
 	// ------------- 			-----
 	// ubar div(u'*u') ==  div[u' *Etag_k] + u'u'div(ubar) == Reynold convection + conversion terms. 
-	mean_perbPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)*dt;
+	mean_perbPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
 
 	// ---------------------     ---------
 	// u'_j d(u'_i ubar_j)/dxi == u'_j*u'_i*d[ubar_j]/dxi = conversion (method I). 
-	perb_perbMeanFlux += calculateEnergyFlux(tag_phi, meanU, tagU)*dt;
+	perb_perbMeanFlux += calculateEnergyFlux(tag_phi, meanU, tagU)()*dt;
 
 	// -----------------------
 	// u'_j d(ubar'_i u'_j)/dxi == mean convection of perb Kinetic energy. 
-	perb_meanPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)*dt;
+	perb_meanPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
 
 	// ----------
 	// u' div(u'*u') == perturbation convection of perb kinetic energy 
-	perb_perbPerbFlux += calculateEnergyFlux(tag_phi, tagU, tagU)*dt;
+	perb_perbPerbFlux += calculateEnergyFlux(tag_phi, tagU, tagU)()*dt;
 
 	/// Calculating conversion using method II
 	volTensorField reynolds  = tagU*tagU; 
@@ -387,8 +387,8 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	// ====================================== Nudging ====================	
 
 void EnergyBalanceTerms::update_energy_Nudging() { 
-	volVectorField tagUc = setUc(tagU); 
-	volVectorField Uc = setUc(U); 
+	volVectorField& tagUc = setUc(tagU)(); 
+	volVectorField& Uc = setUc(U)(); 
 
 	perb_energy_nudging  += (1e-3*tagU&tagUc);
 	total_energy_nudging += 1e-3*U&(U_background-Uc);
@@ -447,7 +447,7 @@ void EnergyBalanceTerms::finalize_calculate_mean() {
 
 // ==================================================================================================================================
 // ==================================================================================================================================
-volTensorField EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, volVectorField& iU) { 
+tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, volVectorField& iU) { 
 	
 	surfaceVectorField interpolateU		=	fvc::interpolate(U);
 	surfaceTensorField interpolateU2	= 	(phi*(mesh.Sf()/mesh.magSf()))*interpolateU;
@@ -476,13 +476,14 @@ volTensorField EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, volVe
 }
 
 
-volVectorField EnergyBalanceTerms::setUc(volVectorField& iU) { 
-	volVectorField Uc = iU;
+tmp<volVectorField> EnergyBalanceTerms::setUc(volVectorField& iU) { 
+	tmp<volVectorField> Uc_ptr(new volVectorField(iU));
+	volVectorField& Uc = Uc_ptr(); 
 
 	forAll(mesh.C(), celli) { 
 		Uc[celli] = iU[CenterLookup[celli]]; 
 	}
-	return Uc; 
+	return Uc_ptr; 
 }
 
 
@@ -499,7 +500,9 @@ volVectorField EnergyBalanceTerms::setUc(volVectorField& iU) {
 //			\ a*(uw)_z  b*(vw)_z c*(ww)_z /	 
 */			
 
-volTensorField& EnergyBalanceTerms::calculateEnergyFlux(volTensorField& ioFluxTensor, volVectorField& iUEnergy) {
+tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> ioFluxTensorPtr, volVectorField& iUEnergy) {
+
+	volTensorField& ioFluxTensor = ioFluxTensorPtr();
 
 	int component = 0; 
 	for (int i=0; i<3;i++) { 
@@ -507,14 +510,13 @@ volTensorField& EnergyBalanceTerms::calculateEnergyFlux(volTensorField& ioFluxTe
 			ioFluxTensor.component(component)() *= iUEnergy.component(j)();
 		}
 	}
-	return ioFluxTensor;
+	return ioFluxTensorPtr;
 
 }
 
-volTensorField& EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
-	volTensorField ret = calculateFlux(iphi,iU);
+tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
 	return calculateEnergyFlux(  
-					ret,
+					calculateFlux(iphi,iU),
 					iUEnergy
 				   );
 }

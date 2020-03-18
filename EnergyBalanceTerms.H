@@ -147,22 +147,23 @@ class EnergyBalanceTerms {
 
 
 	// - Calculates the termwise flux with the surface flux iphi and the cell velocity iU. 
-	volTensorField calculateFlux(surfaceScalarField& iphi, volVectorField& iU);
+	tmp<volTensorField> calculateFlux(surfaceScalarField& iphi, volVectorField& iU) ;
 
 	// - Multiplies the tensor flux by iUEnergy. 
 	// - iUEnergy.coponent(0) --> line 0 in the tensor. 
 	// - iUEnergy.coponent(1) --> line 1 in the tensor. 
 	// - iUEnergy.coponent(2) --> line 2 in the tensor. 
-	volTensorField& calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy);
+	tmp<volTensorField> calculateEnergyFlux(tmp<volTensorField> ioFluxTensorPtr, volVectorField& iUEnergy);
 
 	// - Multiplies the tensor flux by iUEnergy. 
 	// - iUEnergy.coponent(0) --> line 0 in the tensor. 
 	// - iUEnergy.coponent(1) --> line 1 in the tensor. 
 	// - iUEnergy.coponent(2) --> line 2 in the tensor. 
-	volTensorField& calculateEnergyFlux(volTensorField& ioFluxTensor, volVectorField& iUEnergy);
+	tmp<volTensorField> calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy);
 
 	// - Return a new field with the value of Uc in every cell. 
-	volVectorField setUc(volVectorField& iU); 
+	tmp<volVectorField> setUc(volVectorField& iU); 
+
 
 
 	// ==========================================================
