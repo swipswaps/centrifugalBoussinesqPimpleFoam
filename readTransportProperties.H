@@ -20,6 +20,6 @@
     dimensionedScalar Prt(laminarTransport.lookup("Prt"));
 
 	// read radius of curvature. 
-	dimensionedScalar Rcurvature(laminarTransport.lookup("Rcurvature"));
+	//dimensionedScalar Rcurvature(laminarTransport.lookup("Rcurvature"));
 
 	

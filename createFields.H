@@ -28,7 +28,7 @@
         mesh
     );
 
-
+/*
     volScalarField CentrifugalFactor
     (
         IOobject        (
@@ -40,7 +40,7 @@
         ),
         mesh
     );
-
+*/
 
     dimensionedScalar TRef = sum(Tmean*mesh.V())/sum(mesh.V());
 

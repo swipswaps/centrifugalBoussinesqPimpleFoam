@@ -24,7 +24,7 @@
     fvVectorMatrix UEqn(
 		(nonlinear ? fvm::ddt(U) + fvm::div(phi, U) : fvm::ddt(U))
 	      + turbulence->divDevReff(U)
-	      - CentrifugalFactor*centrifugal*sqr(U.component(0))/Rcurvature	      
+//	      - CentrifugalFactor*centrifugal*sqr(U.component(0))/Rcurvature	      
 	      + NudgingTerm
 	      - fvm::laplacian(AnisotropicDiffusion,U)
 	     ==
