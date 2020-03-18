@@ -104,6 +104,7 @@ class EnergyBalanceTerms {
 	// - Calculated fields - mean 
 	energy_fields(Scalar,dUdt);    		// dt terms. 
 	energy_fields(Tensor,diffusion);    	// diffusion terms.
+	energy_fields(Tensor,gradUsqr);    	// The diffusion terms after the integration. 
 	energy_fields(Scalar,pressure);    	// pressure terms.
 	energy_fields(Scalar,nudging);    	// nudging terms.
 	energy_fields(Scalar,potential);    	// potential energy terms.        
