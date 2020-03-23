@@ -76,7 +76,7 @@ class EnergyBalanceTerms {
 	volVectorField U_background; // The background wind. In the centerfuginal code it is referred to as Umean. 
 	uniformDimensionedVectorField g; 
 	dimensionedScalar beta;
-	const scalar alpha; // the nudging coefficient. 1e-3
+	const dimensionedScalar alpha; // the nudging coefficient. 1e-3/s
 	
 	bool calculateZone; 
 	volScalarField zoneSelector;
@@ -136,7 +136,6 @@ class EnergyBalanceTerms {
 	void update_energy_Convection();  //- Calculates the total convection
 	void update_energy_Diffusion();  //- Calculates the diffusion
 
-
 	void finalize_calculate_perb();
 	void finalize_calculate_mean();  	
 
@@ -161,7 +160,7 @@ class EnergyBalanceTerms {
 	tmp<volTensorField> calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy);
 
 	// - Return a new field with the value of Uc in every cell. 
-	tmp<volVectorField> setUc(volVectorField& iU); 
+	void setUc(volVectorField& iU); 
 
 
 

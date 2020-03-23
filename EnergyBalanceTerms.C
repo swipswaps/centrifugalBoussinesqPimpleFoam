@@ -67,6 +67,14 @@
 	zeroTensor(perb_energy_##variable,dims),\
 	zeroTensor(total_energy_##variable,dims)
 
+
+
+/**
+	Initializes the internal variables and checks if the mean exists. 
+	If the mean exists the operates on a perturbaion calculation mode. 
+	Otherwise, calculate the mean. 
+
+*/ 
 EnergyBalanceTerms::EnergyBalanceTerms(
 				fvMesh& mesh,
 				Time&   runTime,
@@ -108,7 +116,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		)
 	), 
 	beta(beta), 
-	alpha(1e-3),
+	alpha(dimensionedScalar("alpha",dimless/dimTime,1e-3)),
 	zeroScalar(zoneSelector,dimless) ,
 	zeroVector(dmeanUdt,U.dimensions()),
 	zeroVector(tagU,U.dimensions()),
@@ -132,11 +140,13 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime) 
 {
 
+	Info << " =-=-=-=-=- Starting energy terms " << endl;
 	// ---------------------------------------------- Setting integration zone 
 	globalMeshData globalmeshdata(mesh); 
 	const globalIndex& globalindexer = globalmeshdata.globalPointNumbering();
 
 	// Specialized code for the nudging. 
+	Info << " \t Nudging  " << endl;
     	meshSearch meshSearch(mesh); 
 	scalar CenterOfDomain = (max(mesh.C().component(1))-min(mesh.C().component(1))).value()/2;    
 
@@ -154,6 +164,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	}
 
 	// --- Specialized code for the nudging : end
+	Info << " \t Zone definition " << endl;
 	if (ZoneName != "") { 
 		label cellzoneID  =  mesh.cellZones().findZoneID(ZoneName);
 		const labelList& cellzonelist =  mesh.cellZones()[cellzoneID];
@@ -187,11 +198,15 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	// ---------------------------------------------- 
 	IOobject check_mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::READ_IF_PRESENT,IOobject::AUTO_WRITE);
 	if (check_mean_U_Header.headerOk()) { 
-		Info << "=========================== Mean exists: loading " << endl;
+		Info << "\t=========================== Mean exists: loading " << endl;
 		_calcMean = false;
+		Info << "\t\t U" << endl;
 		IOobject mean_U_Header("mean_U" ,mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
+		Info << "\t\t p_rgh" << endl;
 		IOobject mean_p_rgh_Header("mean_p_rgh" ,mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
+		Info << "\t\t T" << endl;
 		IOobject mean_T_Header("mean_T" ,mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
+		Info << "\t\t phi" << endl;
 		IOobject mean_Phi_header("mean_phi",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
 
 		mean_U 		= new Foam::volVectorField(mean_U_Header,mesh); 
@@ -199,33 +214,46 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_T  	= new Foam::volScalarField(mean_T_Header,mesh);
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_header,mesh); 
 
-		Info << " -- calculating the first u' " << endl;
+		Info << "\t\t -- calculating the first u' " << endl;
 		tagU = U-(*mean_U); 
 
-		Info << " Loading the last time step to calculate d[ubar]/dt " << endl;
+		Info << "\t\t Loading the last time step to calculate d[ubar]/dt " << endl;
 		word lastTime(name(runTime.endTime().value()));
 		dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
 
+		Info << "\t\t The timespan is " << timeSpan << endl;
+
 		// get the dubar/dt = (u|1-u|0)/Time
-		Info << " Reading time step " << lastTime << endl;
+		Info << "\t\t Reading time step " << lastTime;
 		volVectorField Ulast(IOobject("U",lastTime,mesh,IOobject::MUST_READ,IOobject::NO_WRITE),
 				      mesh);
-
+		Info << " ... Done " << endl; 
 
 		// calculate the mean fields. 
 		volVectorField& meanU 		= *mean_U;
 		surfaceScalarField& meanphi     = *mean_phi;
-		volVectorField& meanUc = setUc(meanU)();
 
+		Info << "\t\t Setting Uc" << endl;
+		volVectorField meanUc = meanU;
+		setUc(meanUc);
+
+		Info << "\t\t Calculating mean energy terms " << endl;
+		Info << "\t\t\t dUdt " << endl;
 		mean_energy_dUdt 	= (meanU) & ((Ulast-U)/timeSpan);
-		mean_energy_pressure 	= (meanU) & fvc::grad(*mean_p_rgh);
-		mean_energy_nudging	= alpha*meanU &(U_background-meanUc);
-		total_energy_potential  = g&beta*meanU*T; 
-		
-		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU)();
 
-		// ----- Diffusion 
+		Info << "\t\t\t Pressure " << endl;
+		mean_energy_pressure 	= (meanU) & fvc::grad(*mean_p_rgh);
+
+		Info << "\t\t\t nudging " << endl;
+		mean_energy_nudging	= alpha*meanU &(U_background-meanUc);
+		Info << "\t\t\t potential " << endl;
+		total_energy_potential  = g&beta*meanU*T; 
+		Info << "\t\t\t mean mean mean flux " << endl;		
+		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU)();
+		Info << "\t\t\t grad mean U " << endl;		
 		volTensorField KgradmeanU = fvc::grad(meanU);
+
+		Info << "\t\t\t (grad mean U)^2 " << endl;		
 		volTensorField KgradmeanUsqr = fvc::grad(meanU);
 
 		forAll(mesh.C(),celli) {
@@ -234,7 +262,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 				KgradmeanU[celli].component(c)    *= AnisotropicDiffusion[celli].component(c); 			
 			}
 		}
-
+		Info << "\t\t\t finalizing the diffusion " << endl;		
 		label component = 0;
 		for(label i=0;i<3;i++) { 
 			for (label j=0;j<3;j++,component++) { 
@@ -242,7 +270,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 			}
 		}
 
-
+		Info << "\t\t\t end " << endl;		
 		
 	} else {
 		Info << "calculate mean on global zone" << endl;
@@ -269,16 +297,29 @@ void EnergyBalanceTerms::update() {
 		if (_calcMean) { 
 			update_mean();
 		} else { 
-			tagU_ls = tagU; 
+
+			tagU_ls = tagU;
 			tagU = U-(*mean_U); 
+
 			tag_p_rgh = p_rgh-(*mean_p_rgh);
 			tag_T     = T-(*mean_T);
 
+			Info << " Updating dudt " << endl;			
 			update_energy_dUdt();
+
+			Info << " Updating pressure " << endl;
 			update_energy_Pressure();
+
+			Info << " Updating convection " << endl;
 			update_energy_Convection();
+
+			Info << " Updating nudging " << endl;
 			update_energy_Nudging();  
+
+			Info << " Updating potential " << endl;
 			update_energy_Potential();
+
+			Info << " Updating diffusion " << endl;
 			update_energy_Diffusion();
 
 		}
@@ -346,14 +387,13 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	// ====================================== dt ====================	
 void EnergyBalanceTerms::update_energy_dUdt() { 
 
+	dimensionedScalar dim_dt = runTime.deltaT();
 	scalar dt = runTime.deltaTValue();
-	scalar total_balance = Integrate( U&fvc::ddt(U) )*dt;
-
 	if (runTime.time() > runTime.startTime() ) {
 
-		volVectorField tagU_ddt = (tagU-tagU_ls)/dt;
-		perb_energy_dUdt  += Integrate( tagU&tagU_ddt )*dt;
-		total_energy_dUdt += total_balance;
+		volVectorField tagU_ddt = (tagU-tagU_ls)/dim_dt;
+		perb_energy_dUdt  += tagU&tagU_ddt*dt;
+		total_energy_dUdt += ( U&fvc::ddt(U) )*dt;
 	}
 }
 
@@ -372,21 +412,85 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 	
 	scalar dt = mesh.time().deltaTValue();
 
-	// first derivative. 	
-	volTensorField KgradU = fvc::grad(U);
-	volTensorField KgradUtag = fvc::grad(tagU);  
+	volTensorField gradU = fvc::grad(U);
+	volTensorField gradUtag = fvc::grad(tagU);  
 
-	volTensorField KgradUsqr = fvc::grad(U);
-	volTensorField KgradtagUsqr = fvc::grad(tagU);
+
+	// first derivative. 	
+	volTensorField KgradU(
+			            IOobject		
+			            (			
+			                    "KgradU",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
+	volTensorField KgradUtag(
+			            IOobject		
+			            (			
+			                    "KgradUtag",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
+
+	volTensorField KgradUsqr(
+			            IOobject		
+			            (			
+			                    "KgradUsqr",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
+	volTensorField KgradtagUsqr(
+			            IOobject		
+			            (			
+			                    "KgradUsqr",		
+			                    mesh.time().timeName(),	
+			                    mesh,			
+			                    IOobject::NO_READ,		
+			                    IOobject::NO_WRITE	
+			            ),					
+			            mesh,				
+			            dimensionedTensor("zero", 
+						      dimVelocity*dimVelocity/dimTime, 
+						      tensor::zero
+						     )
+				 );
+
 
 	forAll(mesh.C(),celli) {
 		for (int c=0;c<9;c++) { 
 			
-			KgradUsqr[celli].component(c)     *= AnisotropicDiffusion[celli].component(c)*KgradUsqr[celli].component(c);
-			KgradtagUsqr[celli].component(c)  *= AnisotropicDiffusion[celli].component(c)*KgradtagUsqr[celli].component(c);
+			KgradUsqr[celli].component(c)     = AnisotropicDiffusion[celli].component(c)*(gradU[celli].component(c)*gradU[celli].component(c));
+			KgradtagUsqr[celli].component(c)  = AnisotropicDiffusion[celli].component(c)*(gradUtag[celli].component(c)*gradUtag[celli].component(c));
 
-			KgradU[celli].component(c)    *= AnisotropicDiffusion[celli].component(c); 			
-			KgradUtag[celli].component(c) *= AnisotropicDiffusion[celli].component(c); 			
+			KgradU[celli].component(c)    = AnisotropicDiffusion[celli].component(c)*gradU[celli].component(c); 			
+			KgradUtag[celli].component(c) = AnisotropicDiffusion[celli].component(c)*gradUtag[celli].component(c); 			
 		}
 	}
 
@@ -421,7 +525,6 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 						      tensor::zero
 						     )
 				 );
-
 	label component = 0;
 	for(label i=0;i<3;i++) { 
 		for (label j=0;j<3;j++,component++) { 
@@ -432,6 +535,7 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 
 	perb_energy_diffusion   += diffusionTag*dt;
 	total_energy_diffusion  += diffusion*dt;
+
 
 	// calculating the (grad U)^2. 
 	perb_energy_gradUsqr  += KgradtagUsqr*dt;
@@ -479,8 +583,10 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	// ====================================== Nudging ====================	
 
 void EnergyBalanceTerms::update_energy_Nudging() { 
-	volVectorField& tagUc = setUc(tagU)(); 
-	volVectorField& Uc = setUc(U)(); 
+	volVectorField tagUc = tagU;
+	setUc(tagUc); 
+	volVectorField Uc = U;
+	setUc(Uc); 
 
 	perb_energy_nudging  += (alpha*tagU&tagUc);
 	total_energy_nudging +=  alpha*U&(U_background-Uc);
@@ -544,9 +650,9 @@ tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, 
 	surfaceVectorField interpolateU		=	fvc::interpolate(U);
 	surfaceTensorField interpolateU2	= 	(phi*(mesh.Sf()/mesh.magSf()))*interpolateU;
 
+	// correction of the boundary 
 	forAll(mesh.boundary(), patchi)
 	{	
-
 		Foam::fvsPatchField<Foam::tensor >& boundary_interpolateU2 	= interpolateU2.boundaryField()[patchi];
 
 		const Foam::fvsPatchField<scalar>& boundary_phi	     = phi.boundaryField()[patchi];
@@ -563,21 +669,8 @@ tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, 
 	        }
 
  	 }
-
 	return fvc::surfaceIntegrate(interpolateU2);
 }
-
-
-tmp<volVectorField> EnergyBalanceTerms::setUc(volVectorField& iU) { 
-	tmp<volVectorField> Uc_ptr(new volVectorField(iU));
-	volVectorField& Uc = Uc_ptr(); 
-
-	forAll(mesh.C(), celli) { 
-		Uc[celli] = iU[CenterLookup[celli]]; 
-	}
-	return Uc_ptr; 
-}
-
 
 /*	The flux are:  [_{x,y,z} is the derivative in that direction].
 //
@@ -591,18 +684,30 @@ tmp<volVectorField> EnergyBalanceTerms::setUc(volVectorField& iU) {
 //			| a*(uv)_y  b*(vv)_y c*(vw)_y |
 //			\ a*(uw)_z  b*(vw)_z c*(ww)_z /	 
 */			
+tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> iFluxTensorPtr, volVectorField& iUEnergy) {
 
-tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> ioFluxTensorPtr, volVectorField& iUEnergy) {
+	tmp<volTensorField> ret(new volTensorField(
+					    IOobject		
+					    (			
+						    "tmpflux",		
+						    mesh.time().timeName(),	
+						    mesh,			
+						    IOobject::NO_READ,		
+						    IOobject::AUTO_WRITE	
+					    ),					
+					    mesh,				
+					    dimensionedTensor("zero",dimVelocity*dimVelocity/dimTime,tensor::zero)
+					)
+				); 
 
-	volTensorField& ioFluxTensor = ioFluxTensorPtr();
-
+	volTensorField& iFluxTensor = iFluxTensorPtr();
 	int component = 0; 
 	for (int i=0; i<3;i++) { 
 		for (int j=0; j<3;j++,component++) {  
-			ioFluxTensor.component(component)() *= iUEnergy.component(j)();
+			ret->component(component) = iFluxTensor.component(component)() * iUEnergy.component(j)();
 		}
 	}
-	return ioFluxTensorPtr;
+	return ret;
 }
 
 tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
@@ -610,6 +715,13 @@ tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& 
 					calculateFlux(iphi,iU),
 					iUEnergy
 				   );
+}
+
+void EnergyBalanceTerms::setUc(volVectorField& iU) { 
+	forAll(mesh.C(), celli) { 
+//		Info << celli << " <- " << CenterLookup[celli] << endl;
+		iU[celli] = iU[CenterLookup[celli]]; 
+	}
 }
 
 // ==================================================================================================================================
@@ -621,7 +733,8 @@ void EnergyBalanceTerms::checkMomentumBalance_Timestep() {
 	Info << "\t\tMomentum balance for time step " << runTime.timeName() <<  endl;
 	Info << "---------------------------------------------------------------------" << endl; 
 
-	volVectorField& Uc = setUc(U)();
+	volVectorField Uc = U;
+	setUc(Uc);
 	volVectorField NudgingTerm = alpha*(U_background-Uc);
 	
 	vector TotalMomentumIntegration = Integrate(fvc::ddt(U) + fvc::div(phi, U) + NudgingTerm - fvc::laplacian(AnisotropicDiffusion,U) + fvc::grad(p_rgh) + g*beta*T);
