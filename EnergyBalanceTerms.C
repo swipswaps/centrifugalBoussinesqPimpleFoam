@@ -57,16 +57,30 @@
             dimensionedTensor("zero",dims,tensor::zero)\
 	)
 
-#define zeroEnergyScalarTerms(variable,dims) \
-	zeroScalar(mean_energy_##variable,dims),\
-	zeroScalar(perb_energy_##variable,dims),\
-	zeroScalar(total_energy_##variable,dims)
+#define zeroEnergyScalarTerms(variable,dims,ctype) \
+	zeroScalar(mean_##ctype##_##variable,dims),\
+	zeroScalar(perb_##ctype##_##variable,dims),\
+	zeroScalar(total_##ctype##_##variable,dims)
 
-#define zeroEnergyTensorTerms(variable,dims) \
-	zeroTensor(mean_energy_##variable,dims),\
-	zeroTensor(perb_energy_##variable,dims),\
-	zeroTensor(total_energy_##variable,dims)
+#define zeroEnergyVectorTerms(variable,dims,ctype) \
+	zeroVector(mean_##ctype##_##variable,dims),\
+	zeroVector(perb_##ctype##_##variable,dims),\
+	zeroVector(total_##ctype##_##variable,dims)
 
+
+#define zeroEnergyTensorTerms(variable,dims,ctype) \
+	zeroTensor(mean_##ctype##_##variable,dims),\
+	zeroTensor(perb_##ctype##_##variable,dims),\
+	zeroTensor(total_##ctype##_##variable,dims)
+
+#define integrate_variables(term,ctype)\
+	scalar	       mean_##ctype##_##term; \
+	scalar	       perb_##ctype##_##term;\
+	scalar	       total_##ctype##_##term;
+
+#define variables_finalize(term,timespan,ctype)\
+	perb_##ctype##_##term  /=timespan;\
+	total_##ctype##_##term /=timespan;
 
 
 /**
@@ -125,19 +139,22 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroScalar(tag_T,T.dimensions()),
 	zeroScalar(tag_phi,phi.dimensions()) , 
 	CenterLookup(mesh.C().internalField().size()) ,
-	zeroEnergyScalarTerms(dUdt,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyTensorTerms(diffusion,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyTensorTerms(gradUsqr,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyScalarTerms(pressure,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyScalarTerms(nudging,dimVelocity*dimVelocity/dimTime),
-	zeroEnergyScalarTerms(potential,dimVelocity*dimVelocity/dimTime),
+	zeroEnergyScalarTerms(dUdt,dimVelocity*dimVelocity/dimTime,energy),
+	zeroEnergyTensorTerms(diffusion,dimVelocity*dimVelocity/dimTime,energy),
+	zeroEnergyTensorTerms(gradUsqr,dimVelocity*dimVelocity/dimTime,energy),
+	zeroEnergyScalarTerms(pressure,dimVelocity*dimVelocity/dimTime,energy),
+	zeroEnergyScalarTerms(nudging,dimVelocity*dimVelocity/dimTime,energy),
+	zeroEnergyScalarTerms(potential,dimVelocity*dimVelocity/dimTime,energy),
 	zeroTensor(energy_fullFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_meanMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_perbMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_meanPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
-	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime) 
+	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime),
+	zeroEnergyTensorTerms(diffusion,dimVelocity/dimTime,momentum),
+	zeroEnergyVectorTerms(diffusion,dimVelocity/dimTime,eqn),
+	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy)
 {
 
 	Info << " =-=-=-=-=- Starting energy terms " << endl;
@@ -246,30 +263,116 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 		Info << "\t\t\t nudging " << endl;
 		mean_energy_nudging	= alpha*meanU &(U_background-meanUc);
+
 		Info << "\t\t\t potential " << endl;
 		total_energy_potential  = g&beta*meanU*T; 
+
 		Info << "\t\t\t mean mean mean flux " << endl;		
-		mean_meanMeanFlux 	= calculateEnergyFlux(meanphi, meanU, meanU)();
+		mean_meanMeanFlux 	  = calculateEnergyFlux(meanphi, meanU, meanU)();
+
 		Info << "\t\t\t grad mean U " << endl;		
-		volTensorField KgradmeanU = fvc::grad(meanU);
+		volTensorField gradU = fvc::grad(meanU); 
+		volTensorField KgradmeanU = AnisotropicDiffusion&gradU;
 
 		Info << "\t\t\t (grad mean U)^2 " << endl;		
-		volTensorField KgradmeanUsqr = fvc::grad(meanU);
+		volTensorField KgradmeanUsqr = KgradmeanU;
 
 		forAll(mesh.C(),celli) {
 			for (int c=0;c<9;c++) { 
-				KgradmeanUsqr[celli].component(c)     *= AnisotropicDiffusion[celli].component(c)*KgradmeanUsqr[celli].component(c);
-				KgradmeanU[celli].component(c)    *= AnisotropicDiffusion[celli].component(c); 			
-			}
-		}
-		Info << "\t\t\t finalizing the diffusion " << endl;		
-		label component = 0;
-		for(label i=0;i<3;i++) { 
-			for (label j=0;j<3;j++,component++) { 
-				mean_energy_diffusion.component(component) = meanU.component(i)*fvc::grad(KgradmeanU.component(component))->component(j);
+				KgradmeanUsqr[celli].component(c) *= gradU[celli].component(c);
 			}
 		}
 
+		Info << "\t\t\t diffusion " << endl;		
+		const surfaceTensorField gamma = fvc::interpolate(AnisotropicDiffusion); 
+		const surfaceVectorField Sn(mesh.Sf()/mesh.magSf());
+
+
+		surfaceTensorField KsnGradMeanU = (mesh.Sf() & gamma)*fvc::snGrad(meanU);
+		forAll(mesh.boundary(), patchi)
+	    	{
+			forAll(mesh.boundary()[patchi], facei)
+			{
+				label component=0;
+				for(int i=0; i<3 ; i++) { 
+					scalar dir = Sn.boundaryField()[patchi][facei].component(i); 
+					for(int j=0; j<3 ; j++,component++) { 
+						KsnGradMeanU.boundaryField()[patchi][facei].component(component) *= dir;
+					}
+				}
+			}
+		}
+
+		const surfaceVectorField KsnGradMeanU_b = (mesh.Sf()&gamma&Sn)*fvc::snGrad(meanU);
+
+		const surfaceVectorField& Cf = mesh.Cf();
+
+		label icell = 0; 
+		const labelUList& owner = mesh.owner();
+		const labelUList& neighbour = mesh.neighbour();
+		forAll(owner, facei)
+		{		
+			if (owner[facei] == icell) { 
+				Info << Cf[facei] << ": " << KsnGradMeanU[facei] << " - " << KsnGradMeanU_b[facei] << endl;
+			}
+		
+			if (neighbour[facei] == icell) { 
+				Info << Cf[facei] << ": " << KsnGradMeanU[facei] << " - " << KsnGradMeanU_b[facei] << endl;
+			}
+
+		}
+
+	    	forAll(mesh.boundary(), patchi)
+	    	{
+			const labelUList& pFaceCells =
+			    mesh.boundary()[patchi].faceCells();
+
+
+
+			forAll(mesh.boundary()[patchi], facei)
+			{
+				if (pFaceCells[facei]==icell) {
+					Info << Cf.boundaryField()[patchi][facei] << " " << Sn.boundaryField()[patchi][facei] << ": " << 
+							KsnGradMeanU.boundaryField()[patchi][facei] << " = " << KsnGradMeanU_b.boundaryField()[patchi][facei] << endl; 
+				}
+
+			}
+		}	
+
+
+		mean_momentum_diffusion = fvc::div(KsnGradMeanU);
+		volVectorField  diffusion_b = fvc::div(KsnGradMeanU_b);
+		mean_eqn_diffusion 		= fvc::laplacian(AnisotropicDiffusion,meanU);
+
+		forAll(mesh.C(),celli) { 
+			Info << mesh.C()[celli] << " ==> " << mean_momentum_diffusion[celli].component(0)+mean_momentum_diffusion[celli].component(3)+mean_momentum_diffusion[celli].component(6) 
+			     << " " << mean_eqn_diffusion[celli].component(0)  << " " << diffusion_b[celli].component(0) << endl;
+		}
+		Info << " ============================================ " << endl;
+
+/*		label component = 0;
+		for(label i=0;i<3;i++) { 
+			for (label j=0;j<3;j++,component++) { 
+				volVectorField KgradgradU = fvc::grad(KsnGradMeanU.component(component)); 
+
+				forAll(mesh.C(),celli) { 
+					scalar Ucomponent      = meanU[celli].component(j); 
+					scalar KgradgradUcomp  = KgradgradU[celli].component(i);
+					scalar& mean_energy_component = mean_energy_diffusion[celli].component(component);
+					mean_energy_component = Ucomponent*KgradgradUcomp; 
+
+					//scalar& mean_momentum_component = mean_momentum_diffusion[celli].component(component);
+					//mean_momentum_component = KgradgradUcomp;
+
+					// THIS IS WRONG. 
+					//scalar& mean_eqn_energy_diffusion_component = mean_eqn_energy_diffusion[celli].component(i);
+					//mean_eqn_energy_diffusion_component = Ucomponent*KgradgradUcomp;
+
+				} //..for cells. 
+			}
+		}
+*/
+		
 		Info << "\t\t\t end " << endl;		
 		
 	} else {
@@ -340,20 +443,33 @@ void EnergyBalanceTerms::finalize() {
 			mean_T->write(); 
 
 		} else { 
+			dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
 			finalize_calculate_perb(); 
+
+			variables_finalize(diffusion,timeSpan.value(),momentum);
+			variables_finalize(diffusion,timeSpan.value(),eqn);
+			variables_finalize(diffusion,timeSpan.value(),eqn_energy);
+
 		}
 	}
+
+
+// Tests
+	Info << " Tests " << endl;
+	Info << "=================" << endl;
+	test_energy_dUdt();
+	test_energy_Pressure();
+	test_energy_Diffusion();
 }
 
 
 void EnergyBalanceTerms::finalize_calculate_perb() { 
 
-	scalar dt = mesh.time().deltaTValue();
 	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
 	
-	energy_variables_finalize(dUdt,timeSpan.value()+dt); 
-	energy_variables_finalize(pressure,timeSpan.value()+dt); 
-	energy_variables_finalize(nudging,timeSpan.value()+dt);  
+	variables_finalize(dUdt,timeSpan.value(),energy); 
+	variables_finalize(pressure,timeSpan.value(),energy); 
+	variables_finalize(nudging,timeSpan.value(),energy);  
 
 	energy_fullFlux		/= timeSpan;
 	mean_meanMeanFlux	/= timeSpan;
@@ -409,137 +525,99 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 
 	// ====================================== pressure ====================	
 void  EnergyBalanceTerms::update_energy_Diffusion() {
-	
+
+/*
+	We need to calculatate: 
+		     / u*K*u_xx v*K*v_xx w*K*w_xx\
+		     | u*K*u_yy v*K*v_yy w*K*w_yy|
+                     \ u*K*u_zz v*K*v_zz w*K*w_zz/
+*/	
 	scalar dt = mesh.time().deltaTValue();
 
-	volTensorField gradU = fvc::grad(U);
+	volTensorField gradU    = fvc::grad(U);
 	volTensorField gradUtag = fvc::grad(tagU);  
 
+/*
+	Because AnisotropicDiffusion is diagonal we get from AnisotropicDiffusion&gradU the following tensor: 
 
-	// first derivative. 	
-	volTensorField KgradU(
-			            IOobject		
-			            (			
-			                    "KgradU",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
+		     / K*u_x K*v_x K*w_x\
+ 	KgradU =     | K*u_y K*v_y K*w_y|
+                     \ K*u_z K*v_z K*w_z/
+	
+*/	
+	volTensorField KgradU 	  = AnisotropicDiffusion&gradU; 
+	volTensorField KgradUtag = AnisotropicDiffusion&gradUtag;
 
-	volTensorField KgradUtag(
-			            IOobject		
-			            (			
-			                    "KgradUtag",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
+	Foam::Field<Foam::DiagTensor<double> > UlaplacianU = diag(U*fvc::laplacian(AnisotropicDiffusion,U));
+	Foam::Field<Foam::DiagTensor<double> > tagUlaplaciantagU = diag(tagU*fvc::laplacian(AnisotropicDiffusion,tagU));
 
-
-	volTensorField KgradUsqr(
-			            IOobject		
-			            (			
-			                    "KgradUsqr",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
-
-	volTensorField KgradtagUsqr(
-			            IOobject		
-			            (			
-			                    "KgradUsqr",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
-
-
-	forAll(mesh.C(),celli) {
-		for (int c=0;c<9;c++) { 
-			
-			KgradUsqr[celli].component(c)     = AnisotropicDiffusion[celli].component(c)*(gradU[celli].component(c)*gradU[celli].component(c));
-			KgradtagUsqr[celli].component(c)  = AnisotropicDiffusion[celli].component(c)*(gradUtag[celli].component(c)*gradUtag[celli].component(c));
-
-			KgradU[celli].component(c)    = AnisotropicDiffusion[celli].component(c)*gradU[celli].component(c); 			
-			KgradUtag[celli].component(c) = AnisotropicDiffusion[celli].component(c)*gradUtag[celli].component(c); 			
-		}
-	}
-
-	volTensorField diffusion(
-			            IOobject		
-			            (			
-			                    "diffusion",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
-
-	volTensorField diffusionTag(
-			            IOobject		
-			            (			
-			                    "diffusion",		
-			                    mesh.time().timeName(),	
-			                    mesh,			
-			                    IOobject::NO_READ,		
-			                    IOobject::NO_WRITE	
-			            ),					
-			            mesh,				
-			            dimensionedTensor("zero", 
-						      dimVelocity*dimVelocity/dimTime, 
-						      tensor::zero
-						     )
-				 );
-	label component = 0;
+	int component =0;
 	for(label i=0;i<3;i++) { 
 		for (label j=0;j<3;j++,component++) { 
-			diffusion.component(component) = U.component(i)*fvc::grad(KgradU.component(component))->component(j);
-			diffusionTag.component(component) = tagU.component(i)*fvc::grad(KgradUtag.component(component))->component(j);
+
+//	Now, for each component: 
+			volVectorField KgradgradU 	= fvc::grad(KgradU.component(component));
+			volVectorField KgradgradUtag 	= fvc::grad(KgradUtag.component(component)); 
+/*
+	the compoent of KgradU is K*t_l where t=[u,v,w] (velocity component, determined by j) and l=[x,y,z] (direction, determined by i) and so 
+
+				     / K*t_lx \
+			KgradgradU = | K*t_ly |
+                                     \ K*t_lz /
+
+	for each t (determined by j)  now we select from this vector 1 component according to [l] (determined by i). 
+	if l=x -> we select row 1
+	   l=y -> we select row 2
+	   l=z -> we select row 3
+
+	Then we select from U the component according to t (that is j) and calculate the energy term. 
+	
+*/			
+
+			forAll(mesh.C(),celli) { 
+		
+				scalar Ucomponent      		= U[celli].component(j); 
+				scalar KgradgradUcomp      	= KgradgradU[celli].component(i);
+		
+				scalar& total_component = total_energy_diffusion[celli].component(component);
+				total_component += Ucomponent*KgradgradUcomp*dt;
+
+				scalar Utagcomponent      		= tagU[celli].component(j); 
+				scalar KgradgradUtagcomp      	= KgradgradUtag[celli].component(i);
+		
+				scalar& perb_component = perb_energy_diffusion[celli].component(component);
+				perb_component += Utagcomponent*KgradgradUtagcomp*dt;  
+
+				scalar& total_momentum_component = total_momentum_diffusion[celli].component(component);
+				total_momentum_component += KgradgradUcomp*dt;
+
+				scalar& perb_momentum_component = perb_momentum_diffusion[celli].component(component);
+				perb_momentum_component += KgradgradUtagcomp*dt;
+
+
+			}
+		}
+
+		forAll(mesh.C(),celli) { 
+				scalar& total_eqn_energy_diffusion_component = total_eqn_energy_diffusion[celli].component(i);
+				total_eqn_energy_diffusion_component += UlaplacianU[celli].component(i)*dt;
+
+				scalar& perb_eqn_energy_diffusion_component = perb_eqn_energy_diffusion[celli].component(i);
+				perb_eqn_energy_diffusion_component += tagUlaplaciantagU[celli].component(i)*dt;
 		}
 	}
 
-	perb_energy_diffusion   += diffusionTag*dt;
-	total_energy_diffusion  += diffusion*dt;
+	total_eqn_diffusion += fvc::laplacian(AnisotropicDiffusion,U)*dt;
+	perb_eqn_diffusion  += fvc::laplacian(AnisotropicDiffusion,tagU)*dt;
 
+// 	dig(A*B) when A,B are vectors = (a_1*b_1,a_2*b_2,a_3*b_3) 
+
+//	total_eqn_energy_diffusion.component(0) += dd.component(0)*dt;
+//	perb_eqn_energy_diffusion  += diag(tagU*fvc::laplacian(AnisotropicDiffusion,tagU))*dt;
 
 	// calculating the (grad U)^2. 
-	perb_energy_gradUsqr  += KgradtagUsqr*dt;
-	total_energy_gradUsqr += KgradUsqr*dt;  
+//	perb_energy_gradUsqr  += KgradtagUsqr*dt;
+//	total_energy_gradUsqr += KgradUsqr*dt;  
 }
 
 	// ====================================== Convection ====================	
@@ -739,6 +817,190 @@ void EnergyBalanceTerms::checkMomentumBalance_Timestep() {
 	
 	vector TotalMomentumIntegration = Integrate(fvc::ddt(U) + fvc::div(phi, U) + NudgingTerm - fvc::laplacian(AnisotropicDiffusion,U) + fvc::grad(p_rgh) + g*beta*T);
 	Info << "\t Momentum conservation " << TotalMomentumIntegration<< endl;
+
+
+
+}
+
+
+// ========================================================== tests. 
+// ==========================================================
+
+// test the mean and perturbation terms; 
+void  EnergyBalanceTerms::test_energy_dUdt() { 
+
+	scalar mean  = Integrate(mean_energy_dUdt); 
+	scalar perb  = Integrate(perb_energy_dUdt); 
+	scalar total = Integrate(total_energy_dUdt); 
+
+ 	Info << " u*du/dt " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
+}
+
+void  EnergyBalanceTerms::test_energy_Pressure() { 
+
+	scalar mean  = Integrate(mean_energy_pressure); 
+	scalar perb  = Integrate(perb_energy_pressure); 
+	scalar total = Integrate(total_energy_pressure); 
+
+ 	Info << " u*pressure " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
+}
+
+
+void  EnergyBalanceTerms::test_energy_Diffusion() { 
+
+	tensor mean  = Integrate(mean_energy_diffusion); 
+	tensor perb  = Integrate(perb_energy_diffusion); 
+	tensor total = Integrate(total_energy_diffusion); 
+
+	tensor momentum_mean  = Integrate(mean_momentum_diffusion); 
+	tensor momentum_perb  = Integrate(perb_momentum_diffusion); 
+	tensor momentum_total = Integrate(total_momentum_diffusion); 
+
+	vector eqn_total      = Integrate(total_eqn_diffusion); 
+	vector eqn_mean       = Integrate(mean_eqn_diffusion); 
+	vector eqn_perb       = Integrate(perb_eqn_diffusion); 
+
+	vector eqn_energy_total      = Integrate(total_eqn_energy_diffusion); 
+	vector eqn_energy_mean       = Integrate(mean_eqn_energy_diffusion); 
+	vector eqn_energy_perb       = Integrate(perb_eqn_energy_diffusion); 
+
+	word component;
+	word dir1;
+	word dir2;
+
+
+//	volVectorField KgradgradU = fvc::div(SfGammaSn*); 
+
+	scalar localSum_eqn = 0; 
+	scalar localSum_mean = 0; 
+	forAll(mesh.C(),celli) { 
+		localSum_eqn  += mean_eqn_diffusion[celli].component(0)*mesh.V()[celli];
+		localSum_mean += ( mean_momentum_diffusion[celli].component(0)+
+			  	   mean_momentum_diffusion[celli].component(3)+
+				   mean_momentum_diffusion[celli].component(6)
+				  )*mesh.V()[celli];
+
+		Info << celli << ": " << mean_eqn_diffusion[celli].component(0) << " = " << 
+								mean_momentum_diffusion[celli].component(0) + 
+								mean_momentum_diffusion[celli].component(3) + 
+								mean_momentum_diffusion[celli].component(6) << "|| " << localSum_eqn << " = " << localSum_mean << endl;
+
+//		Info << celli << ": " << momentum_mean[celli].component(c) << "*" << meanU[celli].component(0) << " = " 
+//			      << (momentum_mean[celli].component(c)*meanU[celli].component(0) ) << " == "
+//                              <<  
+//			      << endl;
+
+	}
+
+ 	Info << " u*diffusion " << endl;
+	Info << " \t---- momentum Eqn. terms " << endl;
+	Info << "\ttotal laplacian(K,u): " << eqn_total.component(0) << " = " << momentum_total.component(0) + momentum_total.component(3) + momentum_total.component(6) << endl;
+	Info << "\ttotal laplacian(K,v): " << eqn_total.component(1) << " = " << momentum_total.component(1) + momentum_total.component(4) + momentum_total.component(7) << endl;
+	Info << "\ttotal laplacian(K,w): " << eqn_total.component(2) << " = " << momentum_total.component(2) + momentum_total.component(5) + momentum_total.component(8) << endl;
+	Info << endl;
+	Info << "\tmean laplacian(K,u): " << eqn_mean.component(0) << " = " << momentum_mean.component(0) + momentum_mean.component(3) + momentum_mean.component(6) << endl;
+	Info << "\tmean laplacian(K,v): " << eqn_mean.component(1) << " = " << momentum_mean.component(1) + momentum_mean.component(4) + momentum_mean.component(7) << endl;
+	Info << "\tmean laplacian(K,w): " << eqn_mean.component(2) << " = " << momentum_mean.component(2) + momentum_mean.component(5) + momentum_mean.component(8) << endl;
+	Info << endl;
+	Info << "\tperb laplacian(K,u): " << eqn_perb.component(0) << " = " << momentum_perb.component(0) + momentum_perb.component(3) + momentum_perb.component(6) << endl;
+	Info << "\tperb laplacian(K,v): " << eqn_perb.component(1) << " = " << momentum_perb.component(1) + momentum_perb.component(4) + momentum_perb.component(7) << endl;
+	Info << "\tperb laplacian(K,w): " << eqn_perb.component(2) << " = " << momentum_perb.component(2) + momentum_perb.component(5) + momentum_perb.component(8) << endl;
+
+	Info << " \t---- momentum " << endl;
+	label c=0;
+	for (int i=0 ; i < 3 ; i++ ) {
+		switch (i) {
+			case 0: 
+				dir1 = "x";
+				break;
+			case 1: 
+				dir1 = "y";
+				break;
+			case 2: 
+				dir1 = "z";
+				break;
+		};
+		for (int j=0 ; j < 3 ; j++,c++ ) {
+			switch (j) {
+				case 0: 
+					component="u";
+					dir2 = "x";
+					break;
+				case 1: 
+					component="v";
+					dir2 = "y";
+					break;
+				case 2: 
+					component="w";
+					dir2 = "z";
+					break;
+			};
+
+
+
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
+					" total " << momentum_total.component(c) << " = " 
+						  << momentum_mean.component(c)  << " + " << momentum_perb.component(c) << " = " << momentum_perb.component(c)+momentum_mean.component(c);
+
+					if (fabs(momentum_total.component(c)) >  1e-5) { 
+						  Info << " Relative " << (momentum_perb.component(c)+momentum_mean.component(c))/momentum_total.component(c) << endl;
+					} else { 
+						Info << endl;
+					}
+		}
+	}
+	
+	Info << " \t---- energy Eqn. terms " << endl;
+	Info << "\ttotal laplacian(K,u): " << eqn_energy_total.component(0) << " = " << total.component(0) + total.component(3) + total.component(6) << endl;
+	Info << "\ttotal laplacian(K,v): " << eqn_energy_total.component(1) << " = " << total.component(1) + total.component(4) + total.component(7) << endl;
+	Info << "\ttotal laplacian(K,w): " << eqn_energy_total.component(2) << " = " << total.component(2) + total.component(5) + total.component(8) << endl;
+	Info << endl;
+	Info << "\tmean laplacian(K,u): " << eqn_energy_mean.component(0) << " = " << perb.component(0) + perb.component(3) + perb.component(6) << endl;
+	Info << "\tmean laplacian(K,v): " << eqn_energy_mean.component(1) << " = " << perb.component(1) + perb.component(4) + perb.component(7) << endl;
+	Info << "\tmean laplacian(K,w): " << eqn_energy_mean.component(2) << " = " << perb.component(2) + perb.component(5) + perb.component(8) << endl;
+	Info << endl;
+	Info << "\tperb laplacian(K,u): " << eqn_energy_perb.component(0) << " = " << perb.component(0) + perb.component(3) + perb.component(6) << endl;
+	Info << "\tperb laplacian(K,v): " << eqn_energy_perb.component(1) << " = " << perb.component(1) + perb.component(4) + perb.component(7) << endl;
+	Info << "\tperb laplacian(K,w): " << eqn_energy_perb.component(2) << " = " << perb.component(2) + perb.component(5) + perb.component(8) << endl;
+
+	Info << " \t---- energy " << endl;
+	c=0;
+	for (int i=0 ; i < 3 ; i++ ) {
+		switch (i) {
+			case 0: 
+				dir1 = "x";
+				break;
+			case 1: 
+				dir1 = "y";
+				break;
+			case 2: 
+				dir1 = "z";
+				break;
+		};
+		for (int j=0 ; j < 3 ; j++,c++ ) {
+			switch (j) {
+				case 0: 
+					component="u";
+					dir2 = "x";
+					break;
+				case 1: 
+					component="v";
+					dir2 = "y";
+					break;
+				case 2: 
+					component="w";
+					dir2 = "z";
+					break;
+			};
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
+					" total " << total.component(c) << " = " << mean.component(c) << " + " << perb.component(c) << " = " << perb.component(c)+mean.component(c);
+					if (fabs(total.component(c)) >  1e-5) { 
+						  Info << " Relative " << (perb.component(c)+mean.component(c))/total.component(c) << endl;
+					} else { 
+						Info << endl;
+					}
+		}
+	}
 
 
 

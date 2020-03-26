@@ -6,24 +6,18 @@
 #include "fvc.H"
 #include "fvCFD.H"
 
-
 #include "meshSearch.H"
 
 
-#define energy_variables(term)\
-	scalar	       mean_energy_##term; \
-	scalar	       perb_energy_##term;\
-	scalar	       total_energy_##term;
 
 
-#define energy_fields(type,term)\
-	vol##type##Field mean_energy_##term; \
-	vol##type##Field perb_energy_##term;\
-	vol##type##Field total_energy_##term;
+#define def_fields(type,term,ctype)\
+	vol##type##Field mean_##ctype##_##term; \
+	vol##type##Field perb_##ctype##_##term;\
+	vol##type##Field total_##ctype##_##term;
+
 	
-#define energy_variables_finalize(term,timespan)\
-	perb_energy_##term  /=timespan;\
-	total_energy_##term /=timespan;
+
 
 
 using namespace Foam;
@@ -102,12 +96,12 @@ class EnergyBalanceTerms {
 	List<int> CenterLookup; 
 
 	// - Calculated fields - mean 
-	energy_fields(Scalar,dUdt);    		// dt terms. 
-	energy_fields(Tensor,diffusion);    	// diffusion terms.
-	energy_fields(Tensor,gradUsqr);    	// The diffusion terms after the integration. 
-	energy_fields(Scalar,pressure);    	// pressure terms.
-	energy_fields(Scalar,nudging);    	// nudging terms.
-	energy_fields(Scalar,potential);    	// potential energy terms.        
+	def_fields(Scalar,dUdt,energy);    		// dt terms. 
+	def_fields(Tensor,diffusion,energy);    	// diffusion terms.
+	def_fields(Tensor,gradUsqr,energy);    	// The diffusion terms after the integration. 
+	def_fields(Scalar,pressure,energy);    	// pressure terms.
+	def_fields(Scalar,nudging,energy);    	// nudging terms.
+	def_fields(Scalar,potential,energy);    	// potential energy terms.        
 
 	// - Convection terms. 
 	volTensorField energy_fullFlux; 	// total flux of energy. 
@@ -119,6 +113,10 @@ class EnergyBalanceTerms {
 
 	volTensorField mean_perb_conversion; 	// = Direct calculation of the conversion term. (Method I).
 
+
+	def_fields(Tensor,diffusion,momentum);    	// diffusion terms.
+	def_fields(Vector,diffusion,eqn);		// the diffusion terms in each wind component. 
+	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
 
 	// ==========================================================
 	// ========================================================== Methods
@@ -162,6 +160,15 @@ class EnergyBalanceTerms {
 	// - Return a new field with the value of Uc in every cell. 
 	void setUc(volVectorField& iU); 
 
+
+	// ==========================================================
+	// ========================================================== tests. 
+	// ==========================================================
+
+	// test the mean and perturbation terms; 
+	void test_energy_dUdt(); 
+	void test_energy_Pressure(); 
+	void test_energy_Diffusion();
 
 
 	// ==========================================================
