@@ -120,6 +120,11 @@ class EnergyBalanceTerms {
 
 
 	// integation of 1 cell for debugging. 
+
+	scalar diffusionTest_total_c0;  // u dudxx component 0
+	scalar diffusionTest_total_c3;  // u dudxx
+	scalar diffusionTest_total_c6;  // u dudxx
+
 	scalar diffusionTest_total;  // u dudxx
 	scalar diffusionTest_mean;   // ubar dubar dxx
 	scalar diffusionTest_term1;  // u' dubar dxx
