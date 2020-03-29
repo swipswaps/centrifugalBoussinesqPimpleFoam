@@ -118,6 +118,14 @@ class EnergyBalanceTerms {
 	def_fields(Vector,diffusion,eqn);		// the diffusion terms in each wind component. 
 	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
 
+
+	// integation of 1 cell for debugging. 
+	scalar diffusionTest_total;  // u dudxx
+	scalar diffusionTest_mean;   // ubar dubar dxx
+	scalar diffusionTest_term1;  // u' dubar dxx
+	scalar diffusionTest_term2;  // ubar du' dxx 
+	scalar diffusionTest_tag;    // u' du' dxx
+
 	// ==========================================================
 	// ========================================================== Methods
 	// ==========================================================
@@ -159,6 +167,9 @@ class EnergyBalanceTerms {
 
 	// - Return a new field with the value of Uc in every cell. 
 	void setUc(volVectorField& iU); 
+
+	// Calculates the correct term-wise laplacian of the field U. 
+	tmp<volTensorField> calculategradKgrad(volVectorField& U);
 
 
 	// ==========================================================
