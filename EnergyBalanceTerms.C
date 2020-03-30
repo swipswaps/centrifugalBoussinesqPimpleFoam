@@ -148,12 +148,17 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroTensor(energy_fullFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_meanMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
+	zeroTensor(perb_perbMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_meanPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime),
 	zeroEnergyTensorTerms(diffusion,dimVelocity/dimTime,momentum),
 	zeroEnergyVectorTerms(diffusion,dimVelocity/dimTime,eqn),
-	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy)
+	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy),
+	perb_perbMeanFlux_cell(tensor::zero),
+	conversionterm_cell(tensor::zero),
+	mean_gradU(tensor::zero),
+	reynolds_cell(tensor::zero)
 {
 
 	Info << " =-=-=-=-=- Starting energy terms " << endl;
@@ -324,7 +329,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_T  	= new Foam::volScalarField(mean_T_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
 	}
-
+	perb_perbMeanFlux_cell_term = 0;
 }
 
 
@@ -409,6 +414,7 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	energy_fullFlux		/= timeSpan;
 	mean_meanMeanFlux	/= timeSpan;
 	mean_perbPerbFlux	/= timeSpan;
+	perb_perbMeanFlux	/= timeSpan;
 	perb_meanPerbFlux	/= timeSpan;
 	perb_perbPerbFlux	/= timeSpan;
 
@@ -453,9 +459,7 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 	scalar dt = mesh.time().deltaTValue();
 
 	total_energy_pressure +=  U&fvc::grad(p_rgh)*dt;
-
 	volVectorField grad_tag_p_rgh = fvc::grad(p_rgh)-fvc::grad(*mean_p_rgh);
-
 	perb_energy_pressure  +=  tagU&grad_tag_p_rgh*dt;
 } 
 
@@ -522,32 +526,27 @@ void EnergyBalanceTerms::update_energy_Convection() {
 
 	// ----------
 	// u div(u*u) 
-	volTensorField total_momentum_component = calculateFlux(phi,U);
-
 	tmp<volTensorField> energy_fullFlux_current = calculateEnergyFlux(phi, U, U);
 	energy_fullFlux   += energy_fullFlux_current()*dt;
 
-	volVectorField  momentum_flux = fvc::div(phi,U); 
-
 //	Info << " Testing convection  "<< endl;
+//	volVectorField  momentum_flux = fvc::div(phi,U); 
+//	volTensorField total_momentum_component = calculateFlux(phi,U);
 //	forAll(mesh.C(),celli) { 
 //		Info << mesh.C()[celli] << " momentum " << momentum_flux[celli].component(0) << " " 
 //					<< total_momentum_component[celli].component(0) + total_momentum_component[celli].component(3) + total_momentum_component[celli].component(6) << endl;
 //	}
 
-/*	
-	Info << energy_flux_component.component(0)		
-
-	for(int i=0; i<9; i++) { 
-		sumV +=  energy_fullFlux_current()[celltester].component(i);
-	}
-	Info << " Testing convection  " << energy_flux_component[celltester] << " = " << sumV << endl;
-*/
 /*
 	// ------------- 			-----
 	// ubar div(u'*u') ==  div[ubar *Etag_k] + u'u'div(ubar) == Reynold convection + conversion terms. 
 	mean_perbPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
 */
+	//		       --------------   -------------
+	// u' div(u'*ubar) ==  u'ubar div[u'] + u'u'div(ubar) == Conversion terms. 
+	// !!! ----- Note: Calculates the sum of the conversion terms per wind component ---!!!
+	tmp<volTensorField> conversionMethodII = calculateEnergyFlux(tag_phi, meanU, tagU);
+	perb_perbMeanFlux += conversionMethodII()*dt;
 	
 /*
 	// -----------------------
@@ -558,7 +557,7 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	// u' div(u'*u') == perturbation convection of perb kinetic energy 
 	perb_perbPerbFlux += calculateEnergyFlux(tag_phi, tagU, tagU)()*dt;
 */
-	/// Calculating conversion using method II
+	/// Calculating conversion using method II, calculates all the conversion terms. 
 	volTensorField reynolds  = tagU*tagU; 
 	volTensorField grad_MeanU = fvc::grad(meanU); 
 	
@@ -942,6 +941,9 @@ void   EnergyBalanceTerms::test_energy_Energy() {
 	Info << "Conversion terms " << endl;
 	label c=0;
 
+
+
+	tensor ConversionTerms_methodI  = Integrate(perb_perbMeanFlux);
 	tensor ConversionTerms_methodII = Integrate(mean_perb_conversion);  
 
 	for (int i=0 ; i < 3 ; i++ ) {
@@ -971,9 +973,11 @@ void   EnergyBalanceTerms::test_energy_Energy() {
 					dir2 = "z";
 					break;
 			};
-			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << " : " <<  ConversionTerms_methodII.component(c) << endl;
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << " : " <<  ConversionTerms_methodI.component(c) << " " << ConversionTerms_methodII.component(c) << endl;
 		} // ..for j
 	} //.. for i
+
+	
 }
 
 
