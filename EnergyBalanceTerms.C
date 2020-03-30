@@ -148,7 +148,6 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroTensor(energy_fullFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_meanMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
-	zeroTensor(perb_perbMeanFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_meanPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(perb_perbPerbFlux, dimVelocity*dimVelocity/dimTime),
 	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime),
@@ -326,17 +325,6 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
 	}
 
-
-	diffusionTest_total_c0= 0;  // u dudxx component 0
-	diffusionTest_total_c3= 0;  // u dudxx
-	diffusionTest_total_c6= 0;  // u dudxx
-
-	diffusionTest_total = 0;  // u dudxx
-	diffusionTest_mean  = 0;   // ubar dubar dxx
-	diffusionTest_term1 = 0;  // u' dubar dxx
-	diffusionTest_term2 = 0;  // ubar du' dxx 
-	diffusionTest_tag   = 0;    // u' du' dxx
-
 }
 
 
@@ -405,6 +393,7 @@ void EnergyBalanceTerms::finalize() {
 	test_energy_dUdt();
 	test_energy_Pressure();
 	test_energy_Diffusion();
+	test_energy_Energy();
 }
 
 
@@ -420,7 +409,6 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	energy_fullFlux		/= timeSpan;
 	mean_meanMeanFlux	/= timeSpan;
 	mean_perbPerbFlux	/= timeSpan;
-	perb_perbMeanFlux	/= timeSpan;
 	perb_meanPerbFlux	/= timeSpan;
 	perb_perbPerbFlux	/= timeSpan;
 
@@ -474,9 +462,6 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 	// ====================================== pressure ====================	
 void  EnergyBalanceTerms::update_energy_Diffusion() {
 
-	label testcomponent =0;
-	label rowcomponent =0;
-	label testcell = 0; 
 
 	scalar dt = mesh.time().deltaTValue();
 
@@ -488,42 +473,20 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 	total_momentum_diffusion       += total_momentum_current*dt; 
 	total_eqn_diffusion 	       += total_eqn_diffusion_current*dt;
 
-	volTensorField perb_momentum_current = calculategradKgrad(tagU)(); //total_momentum_current-mean_momentum_diffusion; 
+	volTensorField perb_momentum_current = calculategradKgrad(tagU)(); 
 	perb_momentum_diffusion        += perb_momentum_current*dt; 
 	perb_eqn_diffusion 	       += perb_eqn_diffusion_current*dt;
 
-	scalar ts_diffusionTest_total_c0 = (U[testcell].component(rowcomponent)	*	total_momentum_current[testcell].component(0));
-	scalar ts_diffusionTest_total_c3 = (U[testcell].component(rowcomponent)	*	total_momentum_current[testcell].component(3));
-	scalar ts_diffusionTest_total_c6 = (U[testcell].component(rowcomponent)	*	total_momentum_current[testcell].component(6));
-
-
-	diffusionTest_total_c0       += ts_diffusionTest_total_c0*dt;
-	diffusionTest_total_c3	     += ts_diffusionTest_total_c3*dt;
-	diffusionTest_total_c6	     += ts_diffusionTest_total_c6*dt;
 
 	label component = 0;
 	for(label i=0;i<3;i++) { 
-		Info << " i " << i << endl;
 		for (label j=0;j<3;j++,component++) { 
-			Info << "\t j " << j << " : "<< component << endl;
 			forAll(mesh.C(),celli) { 
 				scalar Ucomponent = U[celli].component(j);
 				scalar tagUcomponent = tagU[celli].component(j);
 
 				scalar& total_energy_component 	 = total_energy_diffusion[celli].component(component); 
 				total_energy_component 		+= Ucomponent*total_momentum_current[celli].component(component)*dt; 
-if (celli ==testcell){
-				if (component==0) { 
-					Info << "\t\t" << i<<","<<j <<" : "	<< component 
-//					Info << "\t\t\t U" << U[celli].component(j) << " " << U[testcell].component(rowcomponent) << endl;
-					//Info << "\t\t\t momentum
- << ") <<<<<<<<< " << total_energy_component << " == " << diffusionTest_total_c0 << endl;
-				} else if (component == 3) {
-					Info << "\t\t" << i<<","<<j <<" : " << component << " <<<<<<<<< " << total_energy_component << " == " << diffusionTest_total_c3*dt << endl;
-				} else if (component == 6) { 
-					Info << "\t\t" << i<<","<<j <<" : " << component << " <<<<<<<<< " << total_energy_component << " == " << diffusionTest_total_c6*dt << endl;
-				}
-}
 
 				scalar& perb_energy_component    = perb_energy_diffusion[celli].component(component); 
 				perb_energy_component 		+= tagUcomponent*perb_momentum_current[celli].component(component)*dt; 
@@ -544,76 +507,6 @@ if (celli ==testcell){
 	}
 
 
-	// testing a single component in a single cell. 
-
-	Info << "Testing component " << testcomponent <<  " in cell "<< testcell << " " << mesh.C()[testcell] << " V " << mesh.V()[testcell] << endl;
-	
-	volVectorField& meanU = *mean_U;
-
-
-
-	scalar ts_diffusionTest_total = U[testcell].component(rowcomponent)	*	(total_momentum_current[testcell].component(0)+
-											 total_momentum_current[testcell].component(3)+
-											 total_momentum_current[testcell].component(6));
-
-	scalar ts_diffusionTest_mean  = meanU[testcell].component(rowcomponent)	*	(mean_momentum_diffusion[testcell].component(0)+
-											 mean_momentum_diffusion[testcell].component(3)+
-											 mean_momentum_diffusion[testcell].component(6));
-
-	scalar ts_diffusionTest_term1 = tagU[testcell].component(rowcomponent)	*	(mean_momentum_diffusion[testcell].component(0)+
-											 mean_momentum_diffusion[testcell].component(3)+
-											 mean_momentum_diffusion[testcell].component(6));
-
-	scalar ts_diffusionTest_term2 = meanU[testcell].component(rowcomponent)	*	(perb_momentum_current[testcell].component(0)+
-											 perb_momentum_current[testcell].component(3)+
-											 perb_momentum_current[testcell].component(6));
-
-	scalar ts_diffusionTest_tag   = tagU[testcell].component(rowcomponent)	*	(perb_momentum_current[testcell].component(0)+
-											 perb_momentum_current[testcell].component(3)+
-											 perb_momentum_current[testcell].component(6));
-
-	Info << "\t Instant For cell one component: " << endl;
-
-	Info << "\t\tMomentum " << total_momentum_current[testcell].component(testcomponent) << " = " 
-	     		        << mean_momentum_diffusion[testcell].component(testcomponent)   << " + " 
-				<< perb_momentum_current[testcell].component(testcomponent) 	<< " = " 
-	     			<< mean_momentum_diffusion[testcell].component(testcomponent) + perb_momentum_current[testcell].component(testcomponent) << endl;
-
-	Info << "\t\tU " << U[testcell].component(rowcomponent) << " =  " 
-			 << meanU[testcell].component(rowcomponent) << " + " << tagU[testcell].component(rowcomponent) << " = " 
-			 << meanU[testcell].component(rowcomponent) + tagU[testcell].component(rowcomponent) << endl;
-
-	Info << "\t\tenergy " << ts_diffusionTest_total << " =  " << ts_diffusionTest_mean  << " + " 
-								  << ts_diffusionTest_term1 << " + " 
-								  << ts_diffusionTest_term2 << " + " 
-								  << ts_diffusionTest_tag   << " = " 
-								  << ts_diffusionTest_mean+ts_diffusionTest_term1+ts_diffusionTest_term2+ts_diffusionTest_tag << " || " 
-								  << endl; 
-
-	diffusionTest_total += ts_diffusionTest_total*dt;
-	diffusionTest_mean  += ts_diffusionTest_mean*dt;
-	diffusionTest_term1 += ts_diffusionTest_term1*dt;
-	diffusionTest_term2 += ts_diffusionTest_term2*dt;
-	diffusionTest_tag   += ts_diffusionTest_tag*dt;
-
-//	Info << " <<<<<< " << ts_diffusionTest_total << " " << ts_diffusionTest_total_c0+ts_diffusionTest_total_c3+ts_diffusionTest_total_c6 << endl;
-//	Info << " <<<<<< " << diffusionTest_total << " " << diffusionTest_total_c0+diffusionTest_total_c3+diffusionTest_total_c6 << endl;
-		
-	Info << "\t Avg For cell " << diffusionTest_total << " =  " << diffusionTest_mean << " + " << diffusionTest_term1 << " + " << 
-   				      diffusionTest_term2 << " + " << diffusionTest_tag <<  " = " << diffusionTest_mean+diffusionTest_term1+diffusionTest_term2+diffusionTest_tag << endl;  
-
-	
-	Info << "\t Instant For cell wind-component: " << endl;
-	Info << "\t\tMomentum " << total_momentum_current[testcell].component(0)+total_momentum_current[testcell].component(3)+total_momentum_current[testcell].component(6) << "=" <<
-				   total_eqn_diffusion_current[testcell].component(0) << endl;
-
-	Info << "\t\tEnergy cumulative " <<  total_energy_diffusion[testcell].component(0)+total_energy_diffusion[testcell].component(3)+total_energy_diffusion[testcell].component(6) << " = " <<
-					     diffusionTest_total << "=" <<  (diffusionTest_total_c0+diffusionTest_total_c3+diffusionTest_total_c6) << endl;
-
-	Info << "\t\t\t " << diffusionTest_total_c0 << " = " << total_energy_diffusion[testcell].component(0) << endl;
-	Info << "\t\t\t " << diffusionTest_total_c3 << " = " << total_energy_diffusion[testcell].component(3) << endl;
-	Info << "\t\t\t " << diffusionTest_total_c6 << " = " << total_energy_diffusion[testcell].component(6) << endl;
-
 	// calculating the (grad U)^2. 
 //	perb_energy_gradUsqr  += KgradtagUsqr*dt;
 //	total_energy_gradUsqr += KgradUsqr*dt;  
@@ -629,16 +522,34 @@ void EnergyBalanceTerms::update_energy_Convection() {
 
 	// ----------
 	// u div(u*u) 
-	energy_fullFlux   += calculateEnergyFlux(phi, U, U)()*dt;
+	volTensorField total_momentum_component = calculateFlux(phi,U);
 
+	tmp<volTensorField> energy_fullFlux_current = calculateEnergyFlux(phi, U, U);
+	energy_fullFlux   += energy_fullFlux_current()*dt;
+
+	volVectorField  momentum_flux = fvc::div(phi,U); 
+
+//	Info << " Testing convection  "<< endl;
+//	forAll(mesh.C(),celli) { 
+//		Info << mesh.C()[celli] << " momentum " << momentum_flux[celli].component(0) << " " 
+//					<< total_momentum_component[celli].component(0) + total_momentum_component[celli].component(3) + total_momentum_component[celli].component(6) << endl;
+//	}
+
+/*	
+	Info << energy_flux_component.component(0)		
+
+	for(int i=0; i<9; i++) { 
+		sumV +=  energy_fullFlux_current()[celltester].component(i);
+	}
+	Info << " Testing convection  " << energy_flux_component[celltester] << " = " << sumV << endl;
+*/
+/*
 	// ------------- 			-----
-	// ubar div(u'*u') ==  div[u' *Etag_k] + u'u'div(ubar) == Reynold convection + conversion terms. 
+	// ubar div(u'*u') ==  div[ubar *Etag_k] + u'u'div(ubar) == Reynold convection + conversion terms. 
 	mean_perbPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
-
-	// ---------------------     ---------
-	// u'_j d(u'_i ubar_j)/dxi == u'_j*u'_i*d[ubar_j]/dxi = conversion (method I). 
-	perb_perbMeanFlux += calculateEnergyFlux(tag_phi, meanU, tagU)()*dt;
-
+*/
+	
+/*
 	// -----------------------
 	// u'_j d(ubar'_i u'_j)/dxi == mean convection of perb Kinetic energy. 
 	perb_meanPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
@@ -646,13 +557,17 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	// ----------
 	// u' div(u'*u') == perturbation convection of perb kinetic energy 
 	perb_perbPerbFlux += calculateEnergyFlux(tag_phi, tagU, tagU)()*dt;
-
+*/
 	/// Calculating conversion using method II
 	volTensorField reynolds  = tagU*tagU; 
 	volTensorField grad_MeanU = fvc::grad(meanU); 
 	
 	for(int i=0; i<9; i++) { 
-		mean_perb_conversion.component(i)() += reynolds.component(i)()*grad_MeanU.component(i)()*dt; 
+		forAll(mesh.C(),celli) { 
+			scalar& mean_perb_conversion_component = mean_perb_conversion[celli].component(i);
+			mean_perb_conversion_component        += reynolds[celli].component(i)*grad_MeanU[celli].component(i)*dt;
+		}
+
 	}
 
 }
@@ -690,8 +605,6 @@ void EnergyBalanceTerms::update_mean() {
 	surfaceScalarField& meanphi 	= *mean_phi; 
 	volScalarField& meanT  		= *mean_T; 
 
-	Info << meanU[0].component(0) << " "  << U[0].component(0) << "*" << dt << endl;
-
 	meanU   += U*dt; 
 	meanP   += p_rgh*dt; 
 	meanphi += phi*dt; 
@@ -724,7 +637,7 @@ void EnergyBalanceTerms::finalize_calculate_mean() {
 // ==================================================================================================================================
 tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, volVectorField& iU) { 
 	
-	surfaceVectorField interpolateU		=	fvc::interpolate(U);
+	surfaceVectorField interpolateU		=	fvc::interpolate(iU);
 	surfaceTensorField interpolateU2	= 	(phi*(mesh.Sf()/mesh.magSf()))*interpolateU;
 
 	// correction of the boundary 
@@ -738,9 +651,14 @@ tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, 
 
 		forAll(boundary_mesh, facei)
         	{
-		    vector n_inside = -(boundary_mesh.Sf()[facei]/boundary_mesh.magSf()[facei]);
-		    tensor tt = (boundary_phi[facei]*n_inside )*boundary_interpolateU[facei];
-		    for (int i=0; i<9;i++) { 
+		    vector n_inside = (boundary_mesh.Sf()[facei]/boundary_mesh.magSf()[facei]);
+		    for (int i=0;i<3;i++) { 
+			scalar val = n_inside.component(i);
+			n_inside.component(i) = fabs(val); 
+		    }
+	
+		    tensor tt = (boundary_phi[facei]*n_inside )*boundary_interpolateU[facei]; 
+		    for (int i=0; i<9;i++) {  
 				boundary_interpolateU2[facei].component(i) = tt.component(i);
 		    }
 	        }
@@ -763,7 +681,7 @@ tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, 
 */			
 tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> iFluxTensorPtr, volVectorField& iUEnergy) {
 
-	tmp<volTensorField> ret(new volTensorField(
+	tmp<volTensorField> retPtr(new volTensorField(
 					    IOobject		
 					    (			
 						    "tmpflux",		
@@ -778,20 +696,26 @@ tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> 
 				); 
 
 	volTensorField& iFluxTensor = iFluxTensorPtr();
+	volTensorField& ret = retPtr();
 	int component = 0; 
 	for (int i=0; i<3;i++) { 
 		for (int j=0; j<3;j++,component++) {  
-			ret->component(component) = iFluxTensor.component(component)() * iUEnergy.component(j)();
+			forAll(mesh.C(),celli) { 
+				scalar& ret_component = ret[celli].component(component);
+			 	ret_component = iFluxTensor[celli].component(component) * iUEnergy[celli].component(j);
+			}
 		}
 	}
-	return ret;
+
+	return retPtr;
 }
 
 tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
-	return calculateEnergyFlux(  
+	tmp<volTensorField> ret =  calculateEnergyFlux(  
 					calculateFlux(iphi,iU),
 					iUEnergy
 				   );
+	return ret; 
 }
 
 void EnergyBalanceTerms::setUc(volVectorField& iU) { 
@@ -897,27 +821,6 @@ void  EnergyBalanceTerms::test_energy_Diffusion() {
 	word component;
 	word dir1;
 	word dir2;
-
-	scalar localSum_eqn = 0; 
-	scalar localSum_mean = 0; 
-	Info << "Energy termwise comparison " << endl;
-	forAll(mesh.C(),celli) { 
-		localSum_eqn  += total_eqn_energy_diffusion[celli].component(0)*mesh.V()[celli];
-		localSum_mean += ( total_energy_diffusion[celli].component(0)+
-			  	   total_energy_diffusion[celli].component(3)+
-				   total_energy_diffusion[celli].component(6)
-				  )*mesh.V()[celli];
-
-		Info << celli << " [" << mesh.C()[celli] << "] : " << total_eqn_energy_diffusion[celli].component(0) << " = " << 
-								total_energy_diffusion[celli].component(0) << " + " << 
-								total_energy_diffusion[celli].component(3) << " + " << 
-								total_energy_diffusion[celli].component(6) << " = " <<
-								total_energy_diffusion[celli].component(0) + 
-								total_energy_diffusion[celli].component(3) + 
-								total_energy_diffusion[celli].component(6) << "|| " << localSum_eqn << " = " << localSum_mean << endl;
-
-	}
-
 
  	Info << " u*diffusion " << endl;
 	Info << " \t---- momentum Eqn. terms " << endl;
@@ -1028,9 +931,49 @@ void  EnergyBalanceTerms::test_energy_Diffusion() {
 					}
 		}
 	}
+}
 
+void   EnergyBalanceTerms::test_energy_Energy() { 
 
+	word component;
+	word dir1;
+	word dir2;
+	
+	Info << "Conversion terms " << endl;
+	label c=0;
 
+	tensor ConversionTerms_methodII = Integrate(mean_perb_conversion);  
+
+	for (int i=0 ; i < 3 ; i++ ) {
+		switch (i) {
+			case 0: 
+				dir1 = "x";
+				break;
+			case 1: 
+				dir1 = "y";
+				break;
+			case 2: 
+				dir1 = "z";
+				break;
+		};
+		for (int j=0 ; j < 3 ; j++,c++ ) {
+			switch (j) {
+				case 0: 
+					component="u";
+					dir2 = "x";
+					break;
+				case 1: 
+					component="v";
+					dir2 = "y";
+					break;
+				case 2: 
+					component="w";
+					dir2 = "z";
+					break;
+			};
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << " : " <<  ConversionTerms_methodII.component(c) << endl;
+		} // ..for j
+	} //.. for i
 }
 
 

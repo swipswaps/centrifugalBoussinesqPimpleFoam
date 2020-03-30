@@ -107,7 +107,6 @@ class EnergyBalanceTerms {
 	volTensorField energy_fullFlux; 	// total flux of energy. 
 	volTensorField mean_meanMeanFlux; 	// mean flux of mean kinetic energy. 
 	volTensorField mean_perbPerbFlux;       // = Conversion term + reynolds flux. 
-	volTensorField perb_perbMeanFlux;       // = Conversion term (Method II) . 
 	volTensorField perb_meanPerbFlux; 	// = Mean Flux of perturbation kinetic energy. 
 	volTensorField perb_perbPerbFlux; 	// = Perturbation flux of perturbation kinetic energy. 
 
@@ -118,18 +117,6 @@ class EnergyBalanceTerms {
 	def_fields(Vector,diffusion,eqn);		// the diffusion terms in each wind component. 
 	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
 
-
-	// integation of 1 cell for debugging. 
-
-	scalar diffusionTest_total_c0;  // u dudxx component 0
-	scalar diffusionTest_total_c3;  // u dudxx
-	scalar diffusionTest_total_c6;  // u dudxx
-
-	scalar diffusionTest_total;  // u dudxx
-	scalar diffusionTest_mean;   // ubar dubar dxx
-	scalar diffusionTest_term1;  // u' dubar dxx
-	scalar diffusionTest_term2;  // ubar du' dxx 
-	scalar diffusionTest_tag;    // u' du' dxx
 
 	// ==========================================================
 	// ========================================================== Methods
@@ -185,6 +172,7 @@ class EnergyBalanceTerms {
 	void test_energy_dUdt(); 
 	void test_energy_Pressure(); 
 	void test_energy_Diffusion();
+	void test_energy_Energy();
 
 
 	// ==========================================================
