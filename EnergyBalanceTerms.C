@@ -155,10 +155,15 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroEnergyTensorTerms(diffusion,dimVelocity/dimTime,momentum),
 	zeroEnergyVectorTerms(diffusion,dimVelocity/dimTime,eqn),
 	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy),
-	perb_perbMeanFlux_cell(tensor::zero),
-	conversionterm_cell(tensor::zero),
-	mean_gradU(tensor::zero),
-	reynolds_cell(tensor::zero)
+	zeroScalar(energy_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_meanMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_perbPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(perb_meanPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(perb_perbMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(perb_perbPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(perb_meanMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_meanPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_perbMeanFlux_eqn,dimVelocity*dimVelocity/dimTime)
 {
 
 	Info << " =-=-=-=-=- Starting energy terms " << endl;
@@ -329,7 +334,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_T  	= new Foam::volScalarField(mean_T_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
 	}
-	perb_perbMeanFlux_cell_term = 0;
+
 }
 
 
@@ -344,6 +349,8 @@ void EnergyBalanceTerms::update() {
 
 			tag_p_rgh = p_rgh-(*mean_p_rgh);
 			tag_T     = T-(*mean_T);
+
+			tag_phi   = phi-*mean_phi;
 
 			Info << " Updating dudt " << endl;			
 			update_energy_dUdt();
@@ -398,7 +405,7 @@ void EnergyBalanceTerms::finalize() {
 	test_energy_dUdt();
 	test_energy_Pressure();
 	test_energy_Diffusion();
-	test_energy_Energy();
+	test_energy_Convection();
 }
 
 
@@ -420,6 +427,19 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 
 	mean_perb_conversion    /= timeSpan; 
 
+
+	energy_fullFlux_eqn    /= timeSpan;   // U&fvc::div(phi,U);
+	mean_meanMeanFlux_eqn    /= timeSpan; // meanU&fvc::div(meanphi,meanU);
+	mean_perbPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,meanU);
+	perb_meanPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(meanphi,tagU);   
+	perb_perbMeanFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,meanU);
+	perb_perbPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,tagU);    
+	
+
+	// close to zero.
+	perb_meanMeanFlux_eqn    /= timeSpan;
+	mean_meanPerbFlux_eqn    /= timeSpan;
+	mean_perbMeanFlux_eqn    /= timeSpan;
 /*
 	Info << "Total = Mean + Perb" << endl;
 	Info << "\t================= " << endl;
@@ -529,6 +549,8 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	tmp<volTensorField> energy_fullFlux_current = calculateEnergyFlux(phi, U, U);
 	energy_fullFlux   += energy_fullFlux_current()*dt;
 
+
+
 //	Info << " Testing convection  "<< endl;
 //	volVectorField  momentum_flux = fvc::div(phi,U); 
 //	volTensorField total_momentum_component = calculateFlux(phi,U);
@@ -537,26 +559,48 @@ void EnergyBalanceTerms::update_energy_Convection() {
 //					<< total_momentum_component[celli].component(0) + total_momentum_component[celli].component(3) + total_momentum_component[celli].component(6) << endl;
 //	}
 
+
 /*
-	// ------------- 			-----
-	// ubar div(u'*u') ==  div[ubar *Etag_k] + u'u'div(ubar) == Reynold convection + conversion terms. 
-	mean_perbPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
+	forAll(mesh.C(),celli) { 
+		scalar sm = 0;
+		for (int i=0;i<9;i++) { 
+			sm += energy_fullFlux_current()[celli].component(i); 
+		}
+
+		Info << mesh.C()[celli] << " " << energy_fullFlux_eqn[celli] << " " << sm << endl;
+	}
 */
+
+/*
+	volVectorField  perb_perb_flux = fvc::div(tag_phi,tagU); 
+	volTensorField	 perb_perb_flux_component = calculateFlux(tag_phi,tagU);
+	forAll(mesh.C(),celli) { 
+		Info << mesh.C()[celli] << " perb-perb-div " << perb_perb_flux[celli].component(0) << " " 
+					<< perb_perb_flux_component[celli].component(0) + perb_perb_flux_component[celli].component(3) + perb_perb_flux_component[celli].component(6) << endl;
+	}
+*/
+
+	// ------------- 			-----
+	// ubar div(u'*u') ==  div[ubar *Etag_k] + u'u'div(ubar) == convection of Reynold by mean + conversion terms. 
+	tmp<volTensorField> mean_perbPerbFlux_current = calculateEnergyFlux(tag_phi, tagU, meanU);
+	mean_perbPerbFlux += mean_perbPerbFlux_current()*dt;
+
 	//		       --------------   -------------
 	// u' div(u'*ubar) ==  u'ubar div[u'] + u'u'div(ubar) == Conversion terms. 
 	// !!! ----- Note: Calculates the sum of the conversion terms per wind component ---!!!
 	tmp<volTensorField> conversionMethodII = calculateEnergyFlux(tag_phi, meanU, tagU);
 	perb_perbMeanFlux += conversionMethodII()*dt;
-	
-/*
+
 	// -----------------------
 	// u'_j d(ubar'_i u'_j)/dxi == mean convection of perb Kinetic energy. 
-	perb_meanPerbFlux += calculateEnergyFlux(meanphi, tagU, tagU)()*dt;
+	tmp<volTensorField> perb_meanPerbFlux_current = calculateEnergyFlux(meanphi, tagU, tagU);
+	perb_meanPerbFlux += perb_meanPerbFlux_current()*dt;
 
 	// ----------
 	// u' div(u'*u') == perturbation convection of perb kinetic energy 
-	perb_perbPerbFlux += calculateEnergyFlux(tag_phi, tagU, tagU)()*dt;
-*/
+	tmp<volTensorField> perb_perbPerbFlux_current = calculateEnergyFlux(tag_phi, tagU, tagU);
+	perb_perbPerbFlux += perb_perbPerbFlux_current()*dt;
+
 	/// Calculating conversion using method II, calculates all the conversion terms. 
 	volTensorField reynolds  = tagU*tagU; 
 	volTensorField grad_MeanU = fvc::grad(meanU); 
@@ -569,6 +613,86 @@ void EnergyBalanceTerms::update_energy_Convection() {
 
 	}
 
+//	test_energy_Convection_Mean_perbperb(mean_perbPerbFlux_current); 
+//	test_energy_Convection_perb_perbMeanFlux(conversionMethodII);
+//	test_energy_Convection_perb_meanPerbFlux(perb_meanPerbFlux_current);
+//	test_energy_Convection_perb_perbPerbFlux(perb_perbPerbFlux_current);
+
+	test_energy_Convection_eqn_sum();
+}
+
+void    EnergyBalanceTerms::test_energy_Convection_eqn_sum() {
+	scalar dt = mesh.time().deltaTValue();
+
+	volVectorField& meanU 		= *mean_U;
+	surfaceScalarField& meanphi     = *mean_phi;
+
+	energy_fullFlux_eqn += U&fvc::div(phi,U)*dt;
+	mean_meanMeanFlux_eqn += meanU&fvc::div(meanphi,meanU)*dt;
+	mean_perbPerbFlux_eqn += tagU&fvc::div(tag_phi,meanU)*dt;
+	perb_meanPerbFlux_eqn += tagU&fvc::div(meanphi,tagU)*dt;   
+	perb_perbMeanFlux_eqn += tagU&fvc::div(tag_phi,meanU)*dt;
+	perb_perbPerbFlux_eqn += tagU&fvc::div(tag_phi,tagU)*dt;    
+
+	perb_meanMeanFlux_eqn += tagU&fvc::div(meanphi,meanU)*dt;    
+	mean_meanPerbFlux_eqn += meanU&fvc::div(meanphi,tagU)*dt;    
+	mean_perbMeanFlux_eqn += meanU&fvc::div(tag_phi,meanU)*dt;    
+}
+
+void    EnergyBalanceTerms::test_energy_Convection_perb_perbPerbFlux(tmp<volTensorField> perb_perbPerbFlux_current) { 
+
+	volScalarField perb_perbPerbFlux_eqn = tagU&fvc::div(tag_phi,tagU);    
+	forAll(mesh.C(),celli) { 
+		scalar sm = 0;
+		for (int i=0;i<9;i++) { 
+			sm += perb_perbPerbFlux_current()[celli].component(i); 
+		}
+
+		Info << mesh.C()[celli] << " " << perb_perbPerbFlux_eqn[celli] << " " << sm << endl;
+	}
+
+}
+
+
+void    EnergyBalanceTerms::test_energy_Convection_perb_meanPerbFlux(tmp<volTensorField> perb_meanPerbFlux_current) { 
+	surfaceScalarField& meanphi     = *mean_phi;
+	volScalarField perb_meanPerbFlux_eqn = tagU&fvc::div(meanphi,tagU);   
+	forAll(mesh.C(),celli) { 
+		scalar sm = 0;
+		for (int i=0;i<9;i++) { 
+			sm += perb_meanPerbFlux_current()[celli].component(i); 
+		}
+
+		Info << mesh.C()[celli] << " " << perb_meanPerbFlux_eqn[celli] << " " << sm << endl;
+	}
+
+}
+
+void   EnergyBalanceTerms::test_energy_Convection_perb_perbMeanFlux(tmp<volTensorField> perb_perbMeanFlux_current) { 
+	volVectorField& meanU 		= *mean_U;
+	volScalarField perb_perbMeanFlux_eqn = tagU&fvc::div(tag_phi,meanU);
+	forAll(mesh.C(),celli) { 
+		scalar sm = 0;
+		for (int i=0;i<9;i++) { 
+			sm += perb_perbMeanFlux_current()[celli].component(i); 
+		}
+
+		Info << mesh.C()[celli] << " " << perb_perbMeanFlux_eqn[celli] << " " << sm << endl;
+	}
+}
+
+void  EnergyBalanceTerms::test_energy_Convection_Mean_perbperb(tmp<volTensorField> mean_perbPerbFlux_current) { 
+
+	volVectorField& meanU 		= *mean_U;
+	volScalarField mean_perbPerbFlux_eqn = tagU&fvc::div(tag_phi,meanU);
+	forAll(mesh.C(),celli) { 
+		scalar sm = 0;
+		for (int i=0;i<9;i++) { 
+			sm += mean_perbPerbFlux_current()[celli].component(i); 
+		}
+
+		Info << mesh.C()[celli] << " " << mean_perbPerbFlux_eqn[celli] << " " << sm << endl;
+	}
 }
 
 	// ====================================== Nudging ====================	
@@ -637,14 +761,14 @@ void EnergyBalanceTerms::finalize_calculate_mean() {
 tmp<volTensorField> EnergyBalanceTerms::calculateFlux(surfaceScalarField& iphi, volVectorField& iU) { 
 	
 	surfaceVectorField interpolateU		=	fvc::interpolate(iU);
-	surfaceTensorField interpolateU2	= 	(phi*(mesh.Sf()/mesh.magSf()))*interpolateU;
+	surfaceTensorField interpolateU2	= 	(iphi*(mesh.Sf()/mesh.magSf()))*interpolateU;
 
 	// correction of the boundary 
 	forAll(mesh.boundary(), patchi)
 	{	
 		Foam::fvsPatchField<Foam::tensor >& boundary_interpolateU2 	= interpolateU2.boundaryField()[patchi];
 
-		const Foam::fvsPatchField<scalar>& boundary_phi	     = phi.boundaryField()[patchi];
+		const Foam::fvsPatchField<scalar>& boundary_phi	     = iphi.boundaryField()[patchi];
 		const Foam::fvsPatchField<Foam::vector>& boundary_interpolateU    = interpolateU.boundaryField()[patchi];
 		const Foam::fvPatch& boundary_mesh 	     = mesh.boundary()[patchi];
 
@@ -932,51 +1056,57 @@ void  EnergyBalanceTerms::test_energy_Diffusion() {
 	}
 }
 
-void   EnergyBalanceTerms::test_energy_Energy() { 
+void   EnergyBalanceTerms::test_energy_Convection() { 
 
 	word component;
 	word dir1;
 	word dir2;
 	
 	Info << "Conversion terms " << endl;
-	label c=0;
 
-
-
-	tensor ConversionTerms_methodI  = Integrate(perb_perbMeanFlux);
+	tensor ConversionTerms_methodI  = Integrate(perb_perbMeanFlux); /// method I only compares sum!. 
 	tensor ConversionTerms_methodII = Integrate(mean_perb_conversion);  
 
-	for (int i=0 ; i < 3 ; i++ ) {
-		switch (i) {
-			case 0: 
-				dir1 = "x";
-				break;
-			case 1: 
-				dir1 = "y";
-				break;
-			case 2: 
-				dir1 = "z";
-				break;
-		};
-		for (int j=0 ; j < 3 ; j++,c++ ) {
-			switch (j) {
-				case 0: 
-					component="u";
-					dir2 = "x";
-					break;
-				case 1: 
-					component="v";
-					dir2 = "y";
-					break;
-				case 2: 
-					component="w";
-					dir2 = "z";
-					break;
-			};
-			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << " : " <<  ConversionTerms_methodI.component(c) << " " << ConversionTerms_methodII.component(c) << endl;
-		} // ..for j
-	} //.. for i
+	scalar tagUdiv                  = Integrate(fvc::div(tag_phi)); 
+	Info << "\t note that the error in the following terms can be of order tag U " << tagUdiv << endl;
+	Info << "ubar " << ConversionTerms_methodI.component(0)  + ConversionTerms_methodI.component(3)  + ConversionTerms_methodI.component(6) << "=" 
+			<< ConversionTerms_methodII.component(0) + ConversionTerms_methodII.component(3) + ConversionTerms_methodII.component(6)  << endl;
+	Info << "vbar " << ConversionTerms_methodI.component(1)  + ConversionTerms_methodI.component(4)  + ConversionTerms_methodI.component(7) << "=" 
+			<< ConversionTerms_methodII.component(1) + ConversionTerms_methodII.component(4) + ConversionTerms_methodII.component(7)  << endl;
+	Info << "wbar " << ConversionTerms_methodI.component(2)  + ConversionTerms_methodI.component(5)  + ConversionTerms_methodI.component(8) << "=" 
+			<< ConversionTerms_methodII.component(2) + ConversionTerms_methodII.component(5) + ConversionTerms_methodII.component(8)  << endl;
 
+
+	forAll(mesh.C(),celli) { 
+		Info << mesh.C()[celli] << ": " << energy_fullFlux_eqn[celli] << " =  " << 
+						   mean_meanMeanFlux_eqn[celli] +
+						   mean_perbPerbFlux_eqn[celli] +
+						   perb_meanPerbFlux_eqn[celli] +
+						   perb_perbMeanFlux_eqn[celli] +
+						   perb_perbPerbFlux_eqn[celli]      << " : " << perb_meanMeanFlux_eqn[celli] << " , " 
+											      << mean_meanPerbFlux_eqn[celli] << " , "
+											      << mean_perbMeanFlux_eqn[celli] << endl;
+	}
+
+	Info << " --- Integration --- " << endl;
+	Info << Integrate(energy_fullFlux_eqn) << " = " << 
+		Integrate(mean_meanMeanFlux_eqn) +
+		Integrate(mean_perbPerbFlux_eqn) +
+		Integrate(perb_meanPerbFlux_eqn) +
+		Integrate(perb_perbMeanFlux_eqn) + 
+		Integrate(perb_perbPerbFlux_eqn) << " : " << Integrate(perb_meanMeanFlux_eqn) << " , " << Integrate(mean_meanPerbFlux_eqn) << "," << Integrate(mean_perbMeanFlux_eqn) << endl;
+
+
+/*
+	forAll(mesh.C(),celli) { 
+	Info << mesh.C()[celli] << " " <<  energy_fullFlux[celli].component(0) << " = " 
+				        << mean_meanMeanFlux[celli].component(0) +
+					   mean_perbPerbFlux[celli].component(0) +
+					   perb_perbMeanFlux[celli].component(0) +
+					   perb_meanPerbFlux[celli].component(0) +
+					   perb_perbPerbFlux[celli].component(0) << endl;
+	}
+*/
 	
 }
 

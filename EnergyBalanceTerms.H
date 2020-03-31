@@ -119,11 +119,19 @@ class EnergyBalanceTerms {
 	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
 
 
-	scalar perb_perbMeanFlux_cell_term;
-	tensor perb_perbMeanFlux_cell;
-	tensor conversionterm_cell;
-	tensor mean_gradU;
-	tensor reynolds_cell;
+	volScalarField energy_fullFlux_eqn;   // U&fvc::div(phi,U);
+	volScalarField mean_meanMeanFlux_eqn; // meanU&fvc::div(meanphi,meanU);
+	volScalarField mean_perbPerbFlux_eqn; // tagU&fvc::div(tag_phi,meanU);
+	volScalarField perb_meanPerbFlux_eqn; // tagU&fvc::div(meanphi,tagU);   
+	volScalarField perb_perbMeanFlux_eqn; // tagU&fvc::div(tag_phi,meanU);
+	volScalarField perb_perbPerbFlux_eqn; // tagU&fvc::div(tag_phi,tagU);    
+
+
+	// should be 0. 
+	volScalarField perb_meanMeanFlux_eqn;
+	volScalarField mean_meanPerbFlux_eqn;  
+	volScalarField mean_perbMeanFlux_eqn;  
+
 
 	// ==========================================================
 	// ========================================================== Methods
@@ -179,7 +187,15 @@ class EnergyBalanceTerms {
 	void test_energy_dUdt(); 
 	void test_energy_Pressure(); 
 	void test_energy_Diffusion();
-	void test_energy_Energy();
+	void test_energy_Convection();
+	void test_energy_Convection_Mean_perbperb(tmp<volTensorField> mean_perbPerbFlux_current);
+	void test_energy_Convection_perb_perbMeanFlux(tmp<volTensorField> perb_perbMeanFlux_current);
+	void test_energy_Convection_perb_meanPerbFlux(tmp<volTensorField> perb_meanPerbFlux_current);
+	void test_energy_Convection_perb_perbPerbFlux(tmp<volTensorField> perb_perbPerbFlux_current);
+	void test_energy_Convection_eqn_sum();
+
+
+
 
 
 	// ==========================================================
