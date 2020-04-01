@@ -9,6 +9,7 @@
 #include "meshSearch.H"
 
 
+//#define TESTS
 
 
 #define def_fields(type,term,ctype)\
@@ -118,7 +119,7 @@ class EnergyBalanceTerms {
 	def_fields(Vector,diffusion,eqn);		// the diffusion terms in each wind component. 
 	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
 
-
+#ifdef TESTS
 	volScalarField energy_fullFlux_eqn;   // U&fvc::div(phi,U);
 	volScalarField mean_meanMeanFlux_eqn; // meanU&fvc::div(meanphi,meanU);
 	volScalarField mean_perbPerbFlux_eqn; // tagU&fvc::div(tag_phi,meanU);
@@ -131,6 +132,19 @@ class EnergyBalanceTerms {
 	volScalarField perb_meanMeanFlux_eqn;
 	volScalarField mean_meanPerbFlux_eqn;  
 	volScalarField mean_perbMeanFlux_eqn;  
+
+	// DEBUGGING FIELDS. 
+	volScalarField mean_fullFlux_eqn;
+	volScalarField perb_fullFlux_eqn;
+	volScalarField mean_fullTagFlux_eqn;
+	volScalarField mean_fullMeanFlux_eqn;
+	
+	volScalarField mean_meanFullFlux_eqn; 
+	volScalarField mean_perbFullFlux_eqn; 
+	volVectorField meanPerbFlux_eqn;
+#endif
+	
+
 
 
 	// ==========================================================
@@ -188,14 +202,19 @@ class EnergyBalanceTerms {
 	void test_energy_Pressure(); 
 	void test_energy_Diffusion();
 	void test_energy_Convection();
+	void test_energy_Nudging(); 
+	void test_enetgy_Potential();
+
+
+#ifdef TESTS
+	void update_energy_Convection_eqn_sum();
+
 	void test_energy_Convection_Mean_perbperb(tmp<volTensorField> mean_perbPerbFlux_current);
 	void test_energy_Convection_perb_perbMeanFlux(tmp<volTensorField> perb_perbMeanFlux_current);
 	void test_energy_Convection_perb_meanPerbFlux(tmp<volTensorField> perb_meanPerbFlux_current);
 	void test_energy_Convection_perb_perbPerbFlux(tmp<volTensorField> perb_perbPerbFlux_current);
-	void test_energy_Convection_eqn_sum();
-
-
-
+	void test_energy_Convection_eqn();
+#endif
 
 
 	// ==========================================================

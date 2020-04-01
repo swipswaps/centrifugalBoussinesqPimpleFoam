@@ -154,8 +154,9 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime),
 	zeroEnergyTensorTerms(diffusion,dimVelocity/dimTime,momentum),
 	zeroEnergyVectorTerms(diffusion,dimVelocity/dimTime,eqn),
-	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy),
-	zeroScalar(energy_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy)
+#ifdef TESTS
+       ,zeroScalar(energy_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(mean_meanMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(mean_perbPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(perb_meanPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
@@ -163,7 +164,15 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroScalar(perb_perbPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(perb_meanMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(mean_meanPerbFlux_eqn,dimVelocity*dimVelocity/dimTime),
-	zeroScalar(mean_perbMeanFlux_eqn,dimVelocity*dimVelocity/dimTime)
+	zeroScalar(mean_perbMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(perb_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_fullTagFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_fullMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_meanFullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroScalar(mean_perbFullFlux_eqn,dimVelocity*dimVelocity/dimTime),
+	zeroVector(meanPerbFlux_eqn,dimVelocity/dimTime)
+#endif 
 {
 
 	Info << " =-=-=-=-=- Starting energy terms " << endl;
@@ -258,6 +267,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		// calculate the mean fields. 
 		volVectorField& meanU 		= *mean_U;
 		surfaceScalarField& meanphi     = *mean_phi;
+		volScalarField& meanT           = *mean_T;
 
 		Info << "\t\t Setting Uc" << endl;
 		volVectorField meanUc = meanU;
@@ -274,7 +284,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_energy_nudging	= alpha*meanU &(U_background-meanUc);
 
 		Info << "\t\t\t potential " << endl;
-		total_energy_potential  = g&beta*meanU*T; 
+		mean_energy_potential  = -beta*(g&meanU)()*meanT;  // remember the g is negative!!. 
 
 		Info << "\t\t\t mean mean mean flux " << endl;		
 		mean_meanMeanFlux 	  = calculateEnergyFlux(meanphi, meanU, meanU)();
@@ -334,6 +344,8 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		mean_T  	= new Foam::volScalarField(mean_T_Header,mesh,dimensionedScalar("uu",T.dimensions(),0)); ;
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_Header,mesh,dimensionedScalar("uu",phi.dimensions(),0)); 
 	}
+
+
 
 }
 
@@ -406,6 +418,8 @@ void EnergyBalanceTerms::finalize() {
 	test_energy_Pressure();
 	test_energy_Diffusion();
 	test_energy_Convection();
+	test_energy_Nudging();
+	test_enetgy_Potential();
 }
 
 
@@ -416,7 +430,8 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	variables_finalize(dUdt,timeSpan.value(),energy); 
 	variables_finalize(pressure,timeSpan.value(),energy); 
 	variables_finalize(nudging,timeSpan.value(),energy);
-	variables_finalize(diffusion,timeSpan.value(),energy);    
+	variables_finalize(diffusion,timeSpan.value(),energy);
+	variables_finalize(potential,timeSpan.value(),energy);        
 
 	energy_fullFlux		/= timeSpan;
 	mean_meanMeanFlux	/= timeSpan;
@@ -428,35 +443,27 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	mean_perb_conversion    /= timeSpan; 
 
 
+#ifdef TESTS
 	energy_fullFlux_eqn    /= timeSpan;   // U&fvc::div(phi,U);
 	mean_meanMeanFlux_eqn    /= timeSpan; // meanU&fvc::div(meanphi,meanU);
 	mean_perbPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,meanU);
 	perb_meanPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(meanphi,tagU);   
 	perb_perbMeanFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,meanU);
 	perb_perbPerbFlux_eqn    /= timeSpan; // tagU&fvc::div(tag_phi,tagU);    
+
+	mean_fullFlux_eqn    /= timeSpan;
+	perb_fullFlux_eqn    /= timeSpan;
 	
+	mean_fullTagFlux_eqn /= timeSpan;
+	mean_fullMeanFlux_eqn/= timeSpan;
+	mean_meanFullFlux_eqn/= timeSpan;
+	mean_perbFullFlux_eqn/= timeSpan;
 
 	// close to zero.
 	perb_meanMeanFlux_eqn    /= timeSpan;
 	mean_meanPerbFlux_eqn    /= timeSpan;
 	mean_perbMeanFlux_eqn    /= timeSpan;
-/*
-	Info << "Total = Mean + Perb" << endl;
-	Info << "\t================= " << endl;
-	Info << "\tTemporal " << endl;
-	Info << "\t\t" << total_energy_dUdt << " = " << mean_energy_dUdt << " + " << perb_energy_dUdt << endl;
-	Info << "\tPressure" << endl; 
-	Info << "\t\t" << total_energy_pressure << " = " << mean_energy_pressure << " + " << perb_energy_pressure << endl;
-
-
-	Info << "Termwise separation" << endl;
-	Info << "\t================= " << endl;
-	Info << "\tConvection of mean energy" << endl;
-	Info << "\t\t total = (x) + (y) + (z): " 	<< mean_energy_convection  << " (" << total_energy_convection << ") " 
-						 	<< " = " 
-							<< mean_convection_termwise.xx() << " + " << mean_convection_termwise.yy() << " + " << mean_convection_termwise.zz() << endl;
-
-*/
+#endif
 }
 
 
@@ -473,7 +480,17 @@ void EnergyBalanceTerms::update_energy_dUdt() {
 	}
 }
 
+void  EnergyBalanceTerms::test_energy_dUdt() { 
+
+	scalar mean  = Integrate(mean_energy_dUdt); 
+	scalar perb  = Integrate(perb_energy_dUdt); 
+	scalar total = Integrate(total_energy_dUdt); 
+
+ 	Info << " u*du/dt " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
+}
+
 	// ====================================== pressure ====================	
+
 //- Calculates the <U&grad(p_rgh)> and accumulates it for the average. 
 void EnergyBalanceTerms::update_energy_Pressure() {
 	scalar dt = mesh.time().deltaTValue();
@@ -483,7 +500,18 @@ void EnergyBalanceTerms::update_energy_Pressure() {
 	perb_energy_pressure  +=  tagU&grad_tag_p_rgh*dt;
 } 
 
-	// ====================================== pressure ====================	
+void  EnergyBalanceTerms::test_energy_Pressure() { 
+
+	scalar mean  = Integrate(mean_energy_pressure); 
+	scalar perb  = Integrate(perb_energy_pressure); 
+	scalar total = Integrate(total_energy_pressure); 
+
+ 	Info << " u*pressure " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
+}
+
+
+
+	// ====================================== diffusion ====================	
 void  EnergyBalanceTerms::update_energy_Diffusion() {
 
 
@@ -536,6 +564,140 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 //	total_energy_gradUsqr += KgradUsqr*dt;  
 }
 
+void  EnergyBalanceTerms::test_energy_Diffusion() { 
+
+	tensor mean  = Integrate(mean_energy_diffusion); 
+	tensor perb  = Integrate(perb_energy_diffusion); 
+	tensor total = Integrate(total_energy_diffusion); 
+
+	tensor momentum_mean  = Integrate(mean_momentum_diffusion); 
+	tensor momentum_perb  = Integrate(perb_momentum_diffusion); 
+	tensor momentum_total = Integrate(total_momentum_diffusion); 
+
+	vector eqn_total      = Integrate(total_eqn_diffusion); 
+	vector eqn_mean       = Integrate(mean_eqn_diffusion); 
+	vector eqn_perb       = Integrate(perb_eqn_diffusion); 
+
+	vector eqn_energy_total      = Integrate(total_eqn_energy_diffusion); 
+	vector eqn_energy_mean       = Integrate(mean_eqn_energy_diffusion); 
+	vector eqn_energy_perb       = Integrate(perb_eqn_energy_diffusion); 
+
+	word component;
+	word dir1;
+	word dir2;
+
+ 	Info << " u*diffusion " << endl;
+	Info << " \t---- momentum Eqn. terms " << endl;
+	Info << "\ttotal laplacian(K,u): " << eqn_total.component(0) << " = " << momentum_total.component(0) + momentum_total.component(3) + momentum_total.component(6) << endl;
+	Info << "\ttotal laplacian(K,v): " << eqn_total.component(1) << " = " << momentum_total.component(1) + momentum_total.component(4) + momentum_total.component(7) << endl;
+	Info << "\ttotal laplacian(K,w): " << eqn_total.component(2) << " = " << momentum_total.component(2) + momentum_total.component(5) + momentum_total.component(8) << endl;
+	Info << endl;
+	Info << "\tmean laplacian(K,u): " << eqn_mean.component(0) << " = " << momentum_mean.component(0) + momentum_mean.component(3) + momentum_mean.component(6) << endl;
+	Info << "\tmean laplacian(K,v): " << eqn_mean.component(1) << " = " << momentum_mean.component(1) + momentum_mean.component(4) + momentum_mean.component(7) << endl;
+	Info << "\tmean laplacian(K,w): " << eqn_mean.component(2) << " = " << momentum_mean.component(2) + momentum_mean.component(5) + momentum_mean.component(8) << endl;
+	Info << endl;
+	Info << "\tperb laplacian(K,u): " << eqn_perb.component(0) << " = " << momentum_perb.component(0) + momentum_perb.component(3) + momentum_perb.component(6) << endl;
+	Info << "\tperb laplacian(K,v): " << eqn_perb.component(1) << " = " << momentum_perb.component(1) + momentum_perb.component(4) + momentum_perb.component(7) << endl;
+	Info << "\tperb laplacian(K,w): " << eqn_perb.component(2) << " = " << momentum_perb.component(2) + momentum_perb.component(5) + momentum_perb.component(8) << endl;
+
+	Info << " \t---- momentum " << endl;
+	label c=0;
+	for (int i=0 ; i < 3 ; i++ ) {
+		switch (i) {
+			case 0: 
+				dir1 = "x";
+				break;
+			case 1: 
+				dir1 = "y";
+				break;
+			case 2: 
+				dir1 = "z";
+				break;
+		};
+		for (int j=0 ; j < 3 ; j++,c++ ) {
+			switch (j) {
+				case 0: 
+					component="u";
+					dir2 = "x";
+					break;
+				case 1: 
+					component="v";
+					dir2 = "y";
+					break;
+				case 2: 
+					component="w";
+					dir2 = "z";
+					break;
+			};
+
+
+
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
+					" total " << momentum_total.component(c) << " = " 
+						  << momentum_mean.component(c)  << " + " << momentum_perb.component(c) << " = " << momentum_perb.component(c)+momentum_mean.component(c);
+
+					if (fabs(momentum_total.component(c)) >  1e-5) { 
+						  Info << " Relative " << (momentum_perb.component(c)+momentum_mean.component(c))/momentum_total.component(c) << endl;
+					} else { 
+						Info << endl;
+					}
+		}
+	}
+	
+	Info << " \t---- energy Eqn. terms " << endl;
+	Info << "\ttotal laplacian(K,u): " << eqn_energy_total.component(0) << " = " << total.component(0) + total.component(3) + total.component(6) << endl;
+	Info << "\ttotal laplacian(K,v): " << eqn_energy_total.component(1) << " = " << total.component(1) + total.component(4) + total.component(7) << endl;
+	Info << "\ttotal laplacian(K,w): " << eqn_energy_total.component(2) << " = " << total.component(2) + total.component(5) + total.component(8) << endl;
+	Info << endl;
+	Info << "\tmean laplacian(K,u): " << eqn_energy_mean.component(0) << " = " << mean.component(0) + mean.component(3) + mean.component(6) << endl;
+	Info << "\tmean laplacian(K,v): " << eqn_energy_mean.component(1) << " = " << mean.component(1) + mean.component(4) + mean.component(7) << endl;
+	Info << "\tmean laplacian(K,w): " << eqn_energy_mean.component(2) << " = " << mean.component(2) + mean.component(5) + mean.component(8) << endl;
+	Info << endl;
+	Info << "\tperb laplacian(K,u): " << eqn_energy_perb.component(0) << " = " << perb.component(0) + perb.component(3) + perb.component(6) << endl;
+	Info << "\tperb laplacian(K,v): " << eqn_energy_perb.component(1) << " = " << perb.component(1) + perb.component(4) + perb.component(7) << endl;
+	Info << "\tperb laplacian(K,w): " << eqn_energy_perb.component(2) << " = " << perb.component(2) + perb.component(5) + perb.component(8) << endl;
+
+	Info << " \t---- energy " << endl;
+	c=0;
+	for (int i=0 ; i < 3 ; i++ ) {
+		switch (i) {
+			case 0: 
+				dir1 = "x";
+				break;
+			case 1: 
+				dir1 = "y";
+				break;
+			case 2: 
+				dir1 = "z";
+				break;
+		};
+		for (int j=0 ; j < 3 ; j++,c++ ) {
+			switch (j) {
+				case 0: 
+					component="u";
+					dir2 = "x";
+					break;
+				case 1: 
+					component="v";
+					dir2 = "y";
+					break;
+				case 2: 
+					component="w";
+					dir2 = "z";
+					break;
+			};
+			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
+					" total " << total.component(c) << " = " << mean.component(c) << " + " << perb.component(c) << " = " << perb.component(c)+mean.component(c);
+					if (fabs(total.component(c)) >  1e-5) { 
+						  Info << " Relative " << (perb.component(c)+mean.component(c))/total.component(c) << endl;
+					} else { 
+						Info << endl;
+					}
+		}
+	}
+}
+
+
 	// ====================================== Convection ====================	
 void EnergyBalanceTerms::update_energy_Convection() {
 	
@@ -548,37 +710,6 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	// u div(u*u) 
 	tmp<volTensorField> energy_fullFlux_current = calculateEnergyFlux(phi, U, U);
 	energy_fullFlux   += energy_fullFlux_current()*dt;
-
-
-
-//	Info << " Testing convection  "<< endl;
-//	volVectorField  momentum_flux = fvc::div(phi,U); 
-//	volTensorField total_momentum_component = calculateFlux(phi,U);
-//	forAll(mesh.C(),celli) { 
-//		Info << mesh.C()[celli] << " momentum " << momentum_flux[celli].component(0) << " " 
-//					<< total_momentum_component[celli].component(0) + total_momentum_component[celli].component(3) + total_momentum_component[celli].component(6) << endl;
-//	}
-
-
-/*
-	forAll(mesh.C(),celli) { 
-		scalar sm = 0;
-		for (int i=0;i<9;i++) { 
-			sm += energy_fullFlux_current()[celli].component(i); 
-		}
-
-		Info << mesh.C()[celli] << " " << energy_fullFlux_eqn[celli] << " " << sm << endl;
-	}
-*/
-
-/*
-	volVectorField  perb_perb_flux = fvc::div(tag_phi,tagU); 
-	volTensorField	 perb_perb_flux_component = calculateFlux(tag_phi,tagU);
-	forAll(mesh.C(),celli) { 
-		Info << mesh.C()[celli] << " perb-perb-div " << perb_perb_flux[celli].component(0) << " " 
-					<< perb_perb_flux_component[celli].component(0) + perb_perb_flux_component[celli].component(3) + perb_perb_flux_component[celli].component(6) << endl;
-	}
-*/
 
 	// ------------- 			-----
 	// ubar div(u'*u') ==  div[ubar *Etag_k] + u'u'div(ubar) == convection of Reynold by mean + conversion terms. 
@@ -613,107 +744,81 @@ void EnergyBalanceTerms::update_energy_Convection() {
 
 	}
 
+#ifdef TESTS
 //	test_energy_Convection_Mean_perbperb(mean_perbPerbFlux_current); 
 //	test_energy_Convection_perb_perbMeanFlux(conversionMethodII);
 //	test_energy_Convection_perb_meanPerbFlux(perb_meanPerbFlux_current);
 //	test_energy_Convection_perb_perbPerbFlux(perb_perbPerbFlux_current);
-
-	test_energy_Convection_eqn_sum();
-}
-
-void    EnergyBalanceTerms::test_energy_Convection_eqn_sum() {
-	scalar dt = mesh.time().deltaTValue();
-
-	volVectorField& meanU 		= *mean_U;
-	surfaceScalarField& meanphi     = *mean_phi;
-
-	energy_fullFlux_eqn += U&fvc::div(phi,U)*dt;
-	mean_meanMeanFlux_eqn += meanU&fvc::div(meanphi,meanU)*dt;
-	mean_perbPerbFlux_eqn += tagU&fvc::div(tag_phi,meanU)*dt;
-	perb_meanPerbFlux_eqn += tagU&fvc::div(meanphi,tagU)*dt;   
-	perb_perbMeanFlux_eqn += tagU&fvc::div(tag_phi,meanU)*dt;
-	perb_perbPerbFlux_eqn += tagU&fvc::div(tag_phi,tagU)*dt;    
-
-	perb_meanMeanFlux_eqn += tagU&fvc::div(meanphi,meanU)*dt;    
-	mean_meanPerbFlux_eqn += meanU&fvc::div(meanphi,tagU)*dt;    
-	mean_perbMeanFlux_eqn += meanU&fvc::div(tag_phi,meanU)*dt;    
-}
-
-void    EnergyBalanceTerms::test_energy_Convection_perb_perbPerbFlux(tmp<volTensorField> perb_perbPerbFlux_current) { 
-
-	volScalarField perb_perbPerbFlux_eqn = tagU&fvc::div(tag_phi,tagU);    
-	forAll(mesh.C(),celli) { 
-		scalar sm = 0;
-		for (int i=0;i<9;i++) { 
-			sm += perb_perbPerbFlux_current()[celli].component(i); 
-		}
-
-		Info << mesh.C()[celli] << " " << perb_perbPerbFlux_eqn[celli] << " " << sm << endl;
-	}
+	update_energy_Convection_eqn_sum();
+#endif
 
 }
 
+void   EnergyBalanceTerms::test_energy_Convection() { 
 
-void    EnergyBalanceTerms::test_energy_Convection_perb_meanPerbFlux(tmp<volTensorField> perb_meanPerbFlux_current) { 
-	surfaceScalarField& meanphi     = *mean_phi;
-	volScalarField perb_meanPerbFlux_eqn = tagU&fvc::div(meanphi,tagU);   
-	forAll(mesh.C(),celli) { 
-		scalar sm = 0;
-		for (int i=0;i<9;i++) { 
-			sm += perb_meanPerbFlux_current()[celli].component(i); 
-		}
+	word component;
+	word dir1;
+	word dir2;
+	
+	Info << "Conversion terms " << endl;
 
-		Info << mesh.C()[celli] << " " << perb_meanPerbFlux_eqn[celli] << " " << sm << endl;
-	}
+	tensor ConversionTerms_methodI  = Integrate(perb_perbMeanFlux); /// method I only compares sum!. 
+	tensor ConversionTerms_methodII = Integrate(mean_perb_conversion);  
+
+	scalar tagUdiv                  = Integrate(fvc::div(tag_phi)); 
+	Info << "\t note that the error in the following terms can be of order tag U " << tagUdiv << endl;
+	Info << "\tubar " << ConversionTerms_methodI.component(0)  + ConversionTerms_methodI.component(3)  + ConversionTerms_methodI.component(6) << "=" 
+			<< ConversionTerms_methodII.component(0) + ConversionTerms_methodII.component(3) + ConversionTerms_methodII.component(6)  << endl;
+	Info << "\tvbar " << ConversionTerms_methodI.component(1)  + ConversionTerms_methodI.component(4)  + ConversionTerms_methodI.component(7) << "=" 
+			<< ConversionTerms_methodII.component(1) + ConversionTerms_methodII.component(4) + ConversionTerms_methodII.component(7)  << endl;
+	Info << "\twbar " << ConversionTerms_methodI.component(2)  + ConversionTerms_methodI.component(5)  + ConversionTerms_methodI.component(8) << "=" 
+			<< ConversionTerms_methodII.component(2) + ConversionTerms_methodII.component(5) + ConversionTerms_methodII.component(8)  << endl;
 
 }
 
-void   EnergyBalanceTerms::test_energy_Convection_perb_perbMeanFlux(tmp<volTensorField> perb_perbMeanFlux_current) { 
-	volVectorField& meanU 		= *mean_U;
-	volScalarField perb_perbMeanFlux_eqn = tagU&fvc::div(tag_phi,meanU);
-	forAll(mesh.C(),celli) { 
-		scalar sm = 0;
-		for (int i=0;i<9;i++) { 
-			sm += perb_perbMeanFlux_current()[celli].component(i); 
-		}
-
-		Info << mesh.C()[celli] << " " << perb_perbMeanFlux_eqn[celli] << " " << sm << endl;
-	}
-}
-
-void  EnergyBalanceTerms::test_energy_Convection_Mean_perbperb(tmp<volTensorField> mean_perbPerbFlux_current) { 
-
-	volVectorField& meanU 		= *mean_U;
-	volScalarField mean_perbPerbFlux_eqn = tagU&fvc::div(tag_phi,meanU);
-	forAll(mesh.C(),celli) { 
-		scalar sm = 0;
-		for (int i=0;i<9;i++) { 
-			sm += mean_perbPerbFlux_current()[celli].component(i); 
-		}
-
-		Info << mesh.C()[celli] << " " << mean_perbPerbFlux_eqn[celli] << " " << sm << endl;
-	}
-}
 
 	// ====================================== Nudging ====================	
 
 void EnergyBalanceTerms::update_energy_Nudging() { 
+	scalar dt = mesh.time().deltaTValue();
 	volVectorField tagUc = tagU;
 	setUc(tagUc); 
 	volVectorField Uc = U;
 	setUc(Uc); 
 
-	perb_energy_nudging  += (alpha*tagU&tagUc);
-	total_energy_nudging +=  alpha*U&(U_background-Uc);
+	perb_energy_nudging  += -(alpha*tagU&tagUc)*dt;
+	total_energy_nudging +=  alpha*U&(U_background-Uc)*dt;
 
+}
+
+
+void EnergyBalanceTerms::test_energy_Nudging() { 
+
+	scalar total_nudging = Integrate(total_energy_nudging); 
+	scalar perb_nudging  = Integrate(perb_energy_nudging); 
+	scalar mean_nudging  = Integrate(mean_energy_nudging); 
+
+	Info << "Nudging " << total_nudging  << " = " << mean_nudging+perb_nudging << " = " << mean_nudging << "+ " <<  perb_nudging << endl;
+ 
 }
 
 	// ====================================== Potential ====================	
 
 void EnergyBalanceTerms::update_energy_Potential() {   //- Calculates the potential energy 
+	scalar dt = mesh.time().deltaTValue();
+	// remember the g is negative!!. 
+	perb_energy_potential 	-= beta*tag_T*(g&tagU)()*dt; 
+	total_energy_potential  -= beta*T*(g&U)()*dt;
 
-	perb_energy_potential 	+= (g&beta*tag_T*tagU)(); 
-	total_energy_potential  += (g&beta*T*U)();
+}
+
+void EnergyBalanceTerms::test_enetgy_Potential() { 
+
+	scalar total_potential = Integrate(total_energy_potential); 
+	scalar perb_potential  = Integrate(perb_energy_potential); 
+	scalar mean_potential  = Integrate(mean_energy_potential); 
+
+	Info << "Potential " << total_potential  << " = " << mean_potential+perb_potential << " = " << mean_potential << "+ " <<  perb_potential << endl;
 }
 
 	// ==========================================================
@@ -885,7 +990,6 @@ tmp<volTensorField>  EnergyBalanceTerms::calculategradKgrad(volVectorField& iU) 
 // ==================================================================================================================================
 // ==================================================================================================================================
 
-
 void EnergyBalanceTerms::checkMomentumBalance_Timestep() { 
 	
 	Info << "\t\tMomentum balance for time step " << runTime.timeName() <<  endl;
@@ -899,313 +1003,7 @@ void EnergyBalanceTerms::checkMomentumBalance_Timestep() {
 	Info << "\t Momentum conservation " << TotalMomentumIntegration<< endl;
 }
 
-
-// ========================================================== tests. 
-// ==========================================================
-
-// test the mean and perturbation terms; 
-void  EnergyBalanceTerms::test_energy_dUdt() { 
-
-	scalar mean  = Integrate(mean_energy_dUdt); 
-	scalar perb  = Integrate(perb_energy_dUdt); 
-	scalar total = Integrate(total_energy_dUdt); 
-
- 	Info << " u*du/dt " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
-}
-
-void  EnergyBalanceTerms::test_energy_Pressure() { 
-
-	scalar mean  = Integrate(mean_energy_pressure); 
-	scalar perb  = Integrate(perb_energy_pressure); 
-	scalar total = Integrate(total_energy_pressure); 
-
- 	Info << " u*pressure " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
-}
-
-
-void  EnergyBalanceTerms::test_energy_Diffusion() { 
-
-	tensor mean  = Integrate(mean_energy_diffusion); 
-	tensor perb  = Integrate(perb_energy_diffusion); 
-	tensor total = Integrate(total_energy_diffusion); 
-
-	tensor momentum_mean  = Integrate(mean_momentum_diffusion); 
-	tensor momentum_perb  = Integrate(perb_momentum_diffusion); 
-	tensor momentum_total = Integrate(total_momentum_diffusion); 
-
-	vector eqn_total      = Integrate(total_eqn_diffusion); 
-	vector eqn_mean       = Integrate(mean_eqn_diffusion); 
-	vector eqn_perb       = Integrate(perb_eqn_diffusion); 
-
-	vector eqn_energy_total      = Integrate(total_eqn_energy_diffusion); 
-	vector eqn_energy_mean       = Integrate(mean_eqn_energy_diffusion); 
-	vector eqn_energy_perb       = Integrate(perb_eqn_energy_diffusion); 
-
-	word component;
-	word dir1;
-	word dir2;
-
- 	Info << " u*diffusion " << endl;
-	Info << " \t---- momentum Eqn. terms " << endl;
-	Info << "\ttotal laplacian(K,u): " << eqn_total.component(0) << " = " << momentum_total.component(0) + momentum_total.component(3) + momentum_total.component(6) << endl;
-	Info << "\ttotal laplacian(K,v): " << eqn_total.component(1) << " = " << momentum_total.component(1) + momentum_total.component(4) + momentum_total.component(7) << endl;
-	Info << "\ttotal laplacian(K,w): " << eqn_total.component(2) << " = " << momentum_total.component(2) + momentum_total.component(5) + momentum_total.component(8) << endl;
-	Info << endl;
-	Info << "\tmean laplacian(K,u): " << eqn_mean.component(0) << " = " << momentum_mean.component(0) + momentum_mean.component(3) + momentum_mean.component(6) << endl;
-	Info << "\tmean laplacian(K,v): " << eqn_mean.component(1) << " = " << momentum_mean.component(1) + momentum_mean.component(4) + momentum_mean.component(7) << endl;
-	Info << "\tmean laplacian(K,w): " << eqn_mean.component(2) << " = " << momentum_mean.component(2) + momentum_mean.component(5) + momentum_mean.component(8) << endl;
-	Info << endl;
-	Info << "\tperb laplacian(K,u): " << eqn_perb.component(0) << " = " << momentum_perb.component(0) + momentum_perb.component(3) + momentum_perb.component(6) << endl;
-	Info << "\tperb laplacian(K,v): " << eqn_perb.component(1) << " = " << momentum_perb.component(1) + momentum_perb.component(4) + momentum_perb.component(7) << endl;
-	Info << "\tperb laplacian(K,w): " << eqn_perb.component(2) << " = " << momentum_perb.component(2) + momentum_perb.component(5) + momentum_perb.component(8) << endl;
-
-	Info << " \t---- momentum " << endl;
-	label c=0;
-	for (int i=0 ; i < 3 ; i++ ) {
-		switch (i) {
-			case 0: 
-				dir1 = "x";
-				break;
-			case 1: 
-				dir1 = "y";
-				break;
-			case 2: 
-				dir1 = "z";
-				break;
-		};
-		for (int j=0 ; j < 3 ; j++,c++ ) {
-			switch (j) {
-				case 0: 
-					component="u";
-					dir2 = "x";
-					break;
-				case 1: 
-					component="v";
-					dir2 = "y";
-					break;
-				case 2: 
-					component="w";
-					dir2 = "z";
-					break;
-			};
-
-
-
-			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
-					" total " << momentum_total.component(c) << " = " 
-						  << momentum_mean.component(c)  << " + " << momentum_perb.component(c) << " = " << momentum_perb.component(c)+momentum_mean.component(c);
-
-					if (fabs(momentum_total.component(c)) >  1e-5) { 
-						  Info << " Relative " << (momentum_perb.component(c)+momentum_mean.component(c))/momentum_total.component(c) << endl;
-					} else { 
-						Info << endl;
-					}
-		}
-	}
-	
-	Info << " \t---- energy Eqn. terms " << endl;
-	Info << "\ttotal laplacian(K,u): " << eqn_energy_total.component(0) << " = " << total.component(0) + total.component(3) + total.component(6) << endl;
-	Info << "\ttotal laplacian(K,v): " << eqn_energy_total.component(1) << " = " << total.component(1) + total.component(4) + total.component(7) << endl;
-	Info << "\ttotal laplacian(K,w): " << eqn_energy_total.component(2) << " = " << total.component(2) + total.component(5) + total.component(8) << endl;
-	Info << endl;
-	Info << "\tmean laplacian(K,u): " << eqn_energy_mean.component(0) << " = " << mean.component(0) + mean.component(3) + mean.component(6) << endl;
-	Info << "\tmean laplacian(K,v): " << eqn_energy_mean.component(1) << " = " << mean.component(1) + mean.component(4) + mean.component(7) << endl;
-	Info << "\tmean laplacian(K,w): " << eqn_energy_mean.component(2) << " = " << mean.component(2) + mean.component(5) + mean.component(8) << endl;
-	Info << endl;
-	Info << "\tperb laplacian(K,u): " << eqn_energy_perb.component(0) << " = " << perb.component(0) + perb.component(3) + perb.component(6) << endl;
-	Info << "\tperb laplacian(K,v): " << eqn_energy_perb.component(1) << " = " << perb.component(1) + perb.component(4) + perb.component(7) << endl;
-	Info << "\tperb laplacian(K,w): " << eqn_energy_perb.component(2) << " = " << perb.component(2) + perb.component(5) + perb.component(8) << endl;
-
-	Info << " \t---- energy " << endl;
-	c=0;
-	for (int i=0 ; i < 3 ; i++ ) {
-		switch (i) {
-			case 0: 
-				dir1 = "x";
-				break;
-			case 1: 
-				dir1 = "y";
-				break;
-			case 2: 
-				dir1 = "z";
-				break;
-		};
-		for (int j=0 ; j < 3 ; j++,c++ ) {
-			switch (j) {
-				case 0: 
-					component="u";
-					dir2 = "x";
-					break;
-				case 1: 
-					component="v";
-					dir2 = "y";
-					break;
-				case 2: 
-					component="w";
-					dir2 = "z";
-					break;
-			};
-			Info << "\t\t d" << component << "/d"<< dir1 << dir1 << 
-					" total " << total.component(c) << " = " << mean.component(c) << " + " << perb.component(c) << " = " << perb.component(c)+mean.component(c);
-					if (fabs(total.component(c)) >  1e-5) { 
-						  Info << " Relative " << (perb.component(c)+mean.component(c))/total.component(c) << endl;
-					} else { 
-						Info << endl;
-					}
-		}
-	}
-}
-
-void   EnergyBalanceTerms::test_energy_Convection() { 
-
-	word component;
-	word dir1;
-	word dir2;
-	
-	Info << "Conversion terms " << endl;
-
-	tensor ConversionTerms_methodI  = Integrate(perb_perbMeanFlux); /// method I only compares sum!. 
-	tensor ConversionTerms_methodII = Integrate(mean_perb_conversion);  
-
-	scalar tagUdiv                  = Integrate(fvc::div(tag_phi)); 
-	Info << "\t note that the error in the following terms can be of order tag U " << tagUdiv << endl;
-	Info << "ubar " << ConversionTerms_methodI.component(0)  + ConversionTerms_methodI.component(3)  + ConversionTerms_methodI.component(6) << "=" 
-			<< ConversionTerms_methodII.component(0) + ConversionTerms_methodII.component(3) + ConversionTerms_methodII.component(6)  << endl;
-	Info << "vbar " << ConversionTerms_methodI.component(1)  + ConversionTerms_methodI.component(4)  + ConversionTerms_methodI.component(7) << "=" 
-			<< ConversionTerms_methodII.component(1) + ConversionTerms_methodII.component(4) + ConversionTerms_methodII.component(7)  << endl;
-	Info << "wbar " << ConversionTerms_methodI.component(2)  + ConversionTerms_methodI.component(5)  + ConversionTerms_methodI.component(8) << "=" 
-			<< ConversionTerms_methodII.component(2) + ConversionTerms_methodII.component(5) + ConversionTerms_methodII.component(8)  << endl;
-
-
-	forAll(mesh.C(),celli) { 
-		Info << mesh.C()[celli] << ": " << energy_fullFlux_eqn[celli] << " =  " << 
-						   mean_meanMeanFlux_eqn[celli] +
-						   mean_perbPerbFlux_eqn[celli] +
-						   perb_meanPerbFlux_eqn[celli] +
-						   perb_perbMeanFlux_eqn[celli] +
-						   perb_perbPerbFlux_eqn[celli]      << " : " << perb_meanMeanFlux_eqn[celli] << " , " 
-											      << mean_meanPerbFlux_eqn[celli] << " , "
-											      << mean_perbMeanFlux_eqn[celli] << endl;
-	}
-
-	Info << " --- Integration --- " << endl;
-	Info << Integrate(energy_fullFlux_eqn) << " = " << 
-		Integrate(mean_meanMeanFlux_eqn) +
-		Integrate(mean_perbPerbFlux_eqn) +
-		Integrate(perb_meanPerbFlux_eqn) +
-		Integrate(perb_perbMeanFlux_eqn) + 
-		Integrate(perb_perbPerbFlux_eqn) << " : " << Integrate(perb_meanMeanFlux_eqn) << " , " << Integrate(mean_meanPerbFlux_eqn) << "," << Integrate(mean_perbMeanFlux_eqn) << endl;
-
-
-/*
-	forAll(mesh.C(),celli) { 
-	Info << mesh.C()[celli] << " " <<  energy_fullFlux[celli].component(0) << " = " 
-				        << mean_meanMeanFlux[celli].component(0) +
-					   mean_perbPerbFlux[celli].component(0) +
-					   perb_perbMeanFlux[celli].component(0) +
-					   perb_meanPerbFlux[celli].component(0) +
-					   perb_perbPerbFlux[celli].component(0) << endl;
-	}
-*/
-	
-}
-
-
-/*
-//- Checks the equalities in the openFoam energy document (21.1.1)
-void EnergyBalanceTerms::testingConvectionEqualities() { 
-	// Checks if:  \bar{U}\&fvc::div(\bar{phi},\bar{U})> = <fvc::div(\bar{phi},0.5*\bar{U}\&\bar{U})>
-	word lastTime(name(runTime.endTime().value()));
-	dimensionedScalar timeSpan = runTime.endTime() - runTime.startTime();
-
-
-	// get the dubar/dt = (u|1-u|0)/Time
-	Info << " Reading time step " << lastTime << endl;
-	volVectorField Ulast(IOobject("U",lastTime,mesh,IOobject::MUST_READ,IOobject::NO_WRITE), mesh);
-
-	volVectorField& meanU 		= *mean_U;
-	surfaceScalarField& meanphi 	= *mean_phi; 
-
-	scalar orig = Integrate(meanU&fvc::div(meanphi,meanU));
-
-	volScalarField barEk = 0.5*meanU&meanU;
-
-	tensor sqrdface_termwise = Integrate( fvc::grad(meanU*barEk) );
-	Info << "\t"  << sqrdface_termwise.xx() << "," << sqrdface_termwise.yy() << "," << sqrdface_termwise.zz() << " || " << orig  << endl;
-
-	// =========================================================================================================
-	Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi,0.5*meanU&meanU)> equality" << endl;
-	scalar sqredterm = Integrate(fvc::div(meanphi,0.5*meanU&meanU));
-	Info << "\t"  << orig << " - " << sqredterm << " = " << orig-sqredterm << " frac " << (orig-sqredterm)/orig << endl;
-
-	Info << " The <meanU&div(menaphi,meanU)> = <meanU&grad(meanphi*interpolate(meanU))> equality" << endl;
-	scalar faceterm = Integrate(meanU&fvc::div(meanphi*fvc::interpolate(meanU)));
-	Info << "\t"  << orig << " - " << faceterm << " = " << orig-faceterm << " frac " << (orig-faceterm)/orig << endl;
-
-	Info << " The <meanU&div(menaphi,meanU)> = <div(meanphi*0.5*interpolate(meanU&meanU))> equality" << endl;
-	scalar sqrdfaceterm = Integrate(fvc::div(0.5*meanphi*fvc::interpolate(meanU&meanU)));
-	Info << "\t"  << orig << " - " << sqrdfaceterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
-
-	Info << " The <meanU&div(menaphi,meanU)> = <div(meanU*0.5*(meanU&meanU))> equality" << endl;
-	scalar sqrdterm = Integrate(fvc::div(0.5*meanU*(meanU&meanU)));
-	Info << "\t"  << orig << " - " << sqrdterm << " = " << orig-sqrdfaceterm << " frac " << (orig-sqrdfaceterm)/orig << endl;
-
-
-	//volTensorField zeroTensor(diffusionSource,barEk.dimensions());
-	tensor diffusionSource; 
-    	volTensorField gradU = fvc::grad(meanU); 
-    	for(int i=0;i<9;i++) { 
-        	diffusionSource.component(i) = Integrate(AnisotropicDiffusion.component(0)*gradU.component(i)*gradU.component(i));
-    	}	
-
-	//Info << Integrate(meanU&(-fvc::laplacian(AnisotropicDiffusion,meanU))) << " || " << Integrate(AnisotropicDiffusion.component(0)*gradU&&gradU) << endl;
-	// =========================================================================================================
-}
-
-
-
-		const surfaceVectorField KsnGradMeanU_b = (mesh.Sf()&gamma&Sn)*fvc::snGrad(meanU);
-		const surfaceVectorField& Cf = mesh.Cf();
-
-		label icell = 0; 
-		const labelUList& owner = mesh.owner();
-		const labelUList& neighbour = mesh.neighbour();
-		forAll(owner, facei)
-		{		
-			if (owner[facei] == icell) { 
-				Info << Cf[facei] << ": " << KsnGradMeanU[facei] << " - " << KsnGradMeanU_b[facei] << endl;
-			}
-		
-			if (neighbour[facei] == icell) { 
-				Info << Cf[facei] << ": " << KsnGradMeanU[facei] << " - " << KsnGradMeanU_b[facei] << endl;
-			}
-
-		}
-
-	    	forAll(mesh.boundary(), patchi)
-	    	{
-			const labelUList& pFaceCells =
-			    mesh.boundary()[patchi].faceCells();
-
-
-
-			forAll(mesh.boundary()[patchi], facei)
-			{
-				if (pFaceCells[facei]==icell) {
-					Info << Cf.boundaryField()[patchi][facei] << " " << Sn.boundaryField()[patchi][facei] << ": " << 
-							KsnGradMeanU.boundaryField()[patchi][facei] << " = " << KsnGradMeanU_b.boundaryField()[patchi][facei] << endl; 
-				}
-
-			}
-		}	
-
-
-		forAll(mesh.C(),celli) { 
-			Info << mesh.C()[celli] << " ==> " << mean_momentum_diffusion[celli].component(0)+mean_momentum_diffusion[celli].component(3)+mean_momentum_diffusion[celli].component(6) 
-			     << " " << mean_eqn_diffusion[celli].component(0)  << " " << diffusion_b[celli].component(0) << endl;
-		}
-		Info << " ============================================ " << endl;
-
-*/
-
+#ifdef TESTS
+#include "EnergyBalanceTests.C"
+#endif
 
