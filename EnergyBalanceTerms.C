@@ -5,7 +5,7 @@
 	variable(		\
             IOobject		\
             (			\
-                    "##variable##",		\
+                    #variable,		\
                     mesh.time().timeName(),	\
                     mesh,			\
                     IOobject::NO_READ,		\
@@ -19,7 +19,7 @@
 	variable(		\
             IOobject		\
             (			\
-                    "##variable##",		\
+                    #variable,		\
                     mesh.time().timeName(),	\
                     mesh,			\
                     IOobject::NO_READ,		\
@@ -33,7 +33,7 @@
 	variable(		\
             IOobject		\
             (			\
-                    "##variable##",		\
+                    #variable,		\
                     mesh.time().timeName(),	\
                     mesh,			\
                     IOobject::NO_READ,		\
@@ -47,7 +47,7 @@
 	variable(		\
             IOobject		\
             (			\
-                    "##variable##",		\
+                    #variable,		\
                     mesh.time().timeName(),	\
                     mesh,			\
                     IOobject::NO_READ,		\
@@ -154,7 +154,9 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 	zeroTensor(mean_perb_conversion, dimVelocity*dimVelocity/dimTime),
 	zeroEnergyTensorTerms(diffusion,dimVelocity/dimTime,momentum),
 	zeroEnergyVectorTerms(diffusion,dimVelocity/dimTime,eqn),
-	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy)
+	zeroEnergyVectorTerms(diffusion,dimVelocity*dimVelocity/dimTime,eqn_energy),
+	zeroTensor(mean_KgradUsqr, dimVelocity*dimVelocity/dimTime),
+	zeroTensor(perb_KgradUsqr, dimVelocity*dimVelocity/dimTime)
 #ifdef TESTS
        ,zeroScalar(energy_fullFlux_eqn,dimVelocity*dimVelocity/dimTime),
 	zeroScalar(mean_meanMeanFlux_eqn,dimVelocity*dimVelocity/dimTime),
@@ -192,7 +194,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		position.component(1) = CenterOfDomain;
 		centercelli = searchEngine.findCell(position,centercelli); //findCell(position);
 		if (centercelli == -1) { 
-			Sout << " Celll not found  in processor "  << Pstream::myProcNo() << ": At cell " 
+			Sout << " Cell not found  in processor "  << Pstream::myProcNo() << ": At cell " 
 			     << mesh.C().internalField()[celli] << " label " << celli << " looking for position " << position << " Not Found!" << endl;
 		}
 		CenterLookup[celli] = centercelli; 
@@ -288,23 +290,18 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 
 		Info << "\t\t\t mean mean mean flux " << endl;		
 		mean_meanMeanFlux 	  = calculateEnergyFlux(meanphi, meanU, meanU)();
-
-
-/*	
+	
 		Info << "\t\t\t grad mean U " << endl;		
-		Needs to be rewritten with the new calculation method. 
-		volTensorField gradU = fvc::grad(meanU); 
-		volTensorField KgradmeanU = AnisotropicDiffusion&gradU;
+		volTensorField grad_meanU = fvc::grad(meanU); 
 
 		Info << "\t\t\t (grad mean U)^2 " << endl;		
-		volTensorField KgradmeanUsqr = KgradmeanU;
-
 		forAll(mesh.C(),celli) {
 			for (int c=0;c<9;c++) { 
-				KgradmeanUsqr[celli].component(c) *= gradU[celli].component(c);
+				mean_KgradUsqr[celli].component(c) = AnisotropicDiffusion[celli].component(0)*grad_meanU[celli].component(c)*grad_meanU[celli].component(c);
+
 			}
 		}
-*/
+
 		Info << "\t\t\t diffusion " << endl;		
 		mean_momentum_diffusion 	= calculategradKgrad(meanU)();
 		mean_eqn_diffusion 		= fvc::laplacian(AnisotropicDiffusion,meanU);
@@ -407,19 +404,20 @@ void EnergyBalanceTerms::finalize() {
 			variables_finalize(diffusion,timeSpan.value(),eqn);
 			variables_finalize(diffusion,timeSpan.value(),eqn_energy);
 
+			// Tests
+				Info << " Tests " << endl;
+				Info << "=================" << endl;
+				test_energy_dUdt();
+				test_energy_Pressure();
+				test_energy_Diffusion();
+				test_energy_Convection();
+				test_energy_Nudging();
+				test_enetgy_Potential();
+
 		}
 	}
 
 
-// Tests
-	Info << " Tests " << endl;
-	Info << "=================" << endl;
-	test_energy_dUdt();
-	test_energy_Pressure();
-	test_energy_Diffusion();
-	test_energy_Convection();
-	test_energy_Nudging();
-	test_enetgy_Potential();
 }
 
 
@@ -441,7 +439,7 @@ void EnergyBalanceTerms::finalize_calculate_perb() {
 	perb_perbPerbFlux	/= timeSpan;
 
 	mean_perb_conversion    /= timeSpan; 
-
+	perb_KgradUsqr		/= timeSpan; 
 
 #ifdef TESTS
 	energy_fullFlux_eqn    /= timeSpan;   // U&fvc::div(phi,U);
@@ -556,6 +554,16 @@ void  EnergyBalanceTerms::update_energy_Diffusion() {
 
 		}
 
+	}
+
+	Info << "\t\t\t (grad tagU)^2 " << endl;		
+	volTensorField grad_perbU = fvc::grad(tagU); 
+
+	forAll(mesh.C(),celli) {
+		for (int c=0;c<9;c++) { 
+			perb_KgradUsqr[celli].component(c) += AnisotropicDiffusion[celli].component(0)*grad_perbU[celli].component(c)*grad_perbU[celli].component(c)*dt;
+
+		}
 	}
 
 

@@ -11,7 +11,6 @@
 
 //#define TESTS
 
-
 #define def_fields(type,term,ctype)\
 	vol##type##Field mean_##ctype##_##term; \
 	vol##type##Field perb_##ctype##_##term;\
@@ -114,10 +113,12 @@ class EnergyBalanceTerms {
 
 	volTensorField mean_perb_conversion; 	// = Direct calculation of the conversion term. (Method I).
 
-
 	def_fields(Tensor,diffusion,momentum);    	// diffusion terms.
 	def_fields(Vector,diffusion,eqn);		// the diffusion terms in each wind component. 
 	def_fields(Vector,diffusion,eqn_energy);        // the energy diffusion terms in each wind component. 
+
+	volTensorField mean_KgradUsqr;
+	volTensorField perb_KgradUsqr;
 
 #ifdef TESTS
 	volScalarField energy_fullFlux_eqn;   // U&fvc::div(phi,U);
