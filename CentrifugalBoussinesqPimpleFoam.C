@@ -249,6 +249,7 @@ int main(int argc, char *argv[])
         }
 	
 	domainEnergyBalanceTerms.update();
+
 	runTime.write();
 	Info	<< "ExecutionTime = " << runTime.elapsedCpuTime() << " s"
 		<< "  ClockTime = " << runTime.elapsedClockTime() << " s"
@@ -256,10 +257,10 @@ int main(int argc, char *argv[])
             
     }
 
-
-    domainEnergyBalanceTerms.finalize();
+	domainEnergyBalanceTerms.finalize();
+	runTime.write();
     Info<< "End\n" << endl;
-
+    
     return 0;
 }
 

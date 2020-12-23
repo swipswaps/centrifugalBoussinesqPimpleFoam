@@ -205,6 +205,7 @@ class EnergyBalanceTerms {
 	void test_energy_Convection();
 	void test_energy_Nudging(); 
 	void test_enetgy_Potential();
+	
 
 
 #ifdef TESTS
@@ -226,6 +227,7 @@ class EnergyBalanceTerms {
 			scalar sfield;
 			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<scalar>());
+			Info << " ---- " << ZoneVolume << " " << sfield << endl;
 			return sfield/ZoneVolume;
 	}
 

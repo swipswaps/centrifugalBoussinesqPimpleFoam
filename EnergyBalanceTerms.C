@@ -247,7 +247,7 @@ EnergyBalanceTerms::EnergyBalanceTerms(
 		IOobject mean_Phi_header("mean_phi",mesh.time().timeName(),mesh,IOobject::MUST_READ,IOobject::AUTO_WRITE);
 
 		mean_U 		= new Foam::volVectorField(mean_U_Header,mesh); 
-		mean_p_rgh  	= new Foam::volScalarField(mean_p_rgh_Header,mesh);
+		mean_p_rgh  = new Foam::volScalarField(mean_p_rgh_Header,mesh);
 		mean_T  	= new Foam::volScalarField(mean_T_Header,mesh);
 		mean_phi	= new Foam::surfaceScalarField(mean_Phi_header,mesh); 
 
@@ -485,6 +485,29 @@ void  EnergyBalanceTerms::test_energy_dUdt() {
 	scalar total = Integrate(total_energy_dUdt); 
 
  	Info << " u*du/dt " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
+ 	
+ 	Info << " =========perb========== " << endl; 
+	forAll(perb_energy_dUdt,celli) { 
+			Info << celli << " "  << perb_energy_dUdt[celli] << endl; 
+			
+			if (celli > 10) break;
+	}
+ 	Info << " =================== " << endl; 
+ 	Info << " =========mean========== " << endl; 
+	forAll(mean_energy_dUdt,celli) { 
+			Info << celli << " "  << mean_energy_dUdt[celli] << endl; 
+			
+			if (celli > 10) break;
+	}
+ 	Info << " =================== " << endl; 
+ 	Info << " =========total========== " << endl; 
+	forAll(total_energy_dUdt,celli) { 
+			Info << celli << " "  << total_energy_dUdt[celli] << endl; 
+			
+			if (celli > 10) break;
+	}
+ 	Info << " =================== " << endl; 
+ 	
 }
 
 	// ====================================== pressure ====================	
@@ -740,7 +763,7 @@ void EnergyBalanceTerms::update_energy_Convection() {
 	tmp<volTensorField> perb_perbPerbFlux_current = calculateEnergyFlux(tag_phi, tagU, tagU);
 	perb_perbPerbFlux += perb_perbPerbFlux_current()*dt;
 
-	/// Calculating conversion using method II, calculates all the conversion terms. 
+	/// Calculating conversion using method I, calculates all the conversion terms. 
 	volTensorField reynolds  = tagU*tagU; 
 	volTensorField grad_MeanU = fvc::grad(meanU); 
 	
@@ -751,6 +774,8 @@ void EnergyBalanceTerms::update_energy_Convection() {
 		}
 
 	}
+
+
 
 #ifdef TESTS
 //	test_energy_Convection_Mean_perbperb(mean_perbPerbFlux_current); 
@@ -781,6 +806,20 @@ void   EnergyBalanceTerms::test_energy_Convection() {
 			<< ConversionTerms_methodII.component(1) + ConversionTerms_methodII.component(4) + ConversionTerms_methodII.component(7)  << endl;
 	Info << "\twbar " << ConversionTerms_methodI.component(2)  + ConversionTerms_methodI.component(5)  + ConversionTerms_methodI.component(8) << "=" 
 			<< ConversionTerms_methodII.component(2) + ConversionTerms_methodII.component(5) + ConversionTerms_methodII.component(8)  << endl;
+
+	Info << "Direct calculation of each term " << endl; 
+	Info <<" u'u'dU/dx " << ConversionTerms_methodII.component(0) << endl;
+	Info <<" u'v'dU/dy " << ConversionTerms_methodII.component(3) << endl;
+	Info <<" u'w'dU/dz " << ConversionTerms_methodII.component(6) << endl;
+
+	Info <<" v'u'dV/dx " << ConversionTerms_methodII.component(1) << endl;
+	Info <<" v'v'dV/dy " << ConversionTerms_methodII.component(4) << endl;
+	Info <<" v'w'dV/dz " << ConversionTerms_methodII.component(7) << endl;
+
+	Info <<" w'u'dV/dx " << ConversionTerms_methodII.component(2) << endl;
+	Info <<" w'v'dV/dy " << ConversionTerms_methodII.component(5) << endl;
+	Info <<" w'w'dV/dz " << ConversionTerms_methodII.component(8) << endl;
+	
 
 }
 
@@ -846,6 +885,8 @@ void EnergyBalanceTerms::update_mean() {
 	meanphi += phi*dt; 
 	meanT   += T*dt;
 }
+
+
 
 
 void EnergyBalanceTerms::finalize_calculate_mean() {
@@ -946,6 +987,12 @@ tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(tmp<volTensorField> 
 	return retPtr;
 }
 
+//   calculates iUEnergy*div(phi,u)  
+//	 so the energy terms is 
+//      <iUEnergy type>_<phi type><u type> 
+//    for example: 
+// 			calculateEnergyFlux(tag_phi, mean_U, tag_u) is actually perb_perbmean 
+//
 tmp<volTensorField> EnergyBalanceTerms::calculateEnergyFlux(surfaceScalarField& iphi, volVectorField& iU, volVectorField& iUEnergy) { 
 	tmp<volTensorField> ret =  calculateEnergyFlux(  
 					calculateFlux(iphi,iU),
@@ -997,6 +1044,8 @@ tmp<volTensorField>  EnergyBalanceTerms::calculategradKgrad(volVectorField& iU) 
 
 // ==================================================================================================================================
 // ==================================================================================================================================
+
+
 
 void EnergyBalanceTerms::checkMomentumBalance_Timestep() { 
 	
