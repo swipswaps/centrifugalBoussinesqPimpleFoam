@@ -485,29 +485,6 @@ void  EnergyBalanceTerms::test_energy_dUdt() {
 	scalar total = Integrate(total_energy_dUdt); 
 
  	Info << " u*du/dt " << total << " = " << mean << " + " << perb << " = " << perb+mean << " Relative " << (perb+mean)/total << endl;
- 	
- 	Info << " =========perb========== " << endl; 
-	forAll(perb_energy_dUdt,celli) { 
-			Info << celli << " "  << perb_energy_dUdt[celli] << endl; 
-			
-			if (celli > 10) break;
-	}
- 	Info << " =================== " << endl; 
- 	Info << " =========mean========== " << endl; 
-	forAll(mean_energy_dUdt,celli) { 
-			Info << celli << " "  << mean_energy_dUdt[celli] << endl; 
-			
-			if (celli > 10) break;
-	}
- 	Info << " =================== " << endl; 
- 	Info << " =========total========== " << endl; 
-	forAll(total_energy_dUdt,celli) { 
-			Info << celli << " "  << total_energy_dUdt[celli] << endl; 
-			
-			if (celli > 10) break;
-	}
- 	Info << " =================== " << endl; 
- 	
 }
 
 	// ====================================== pressure ====================	

@@ -227,7 +227,6 @@ class EnergyBalanceTerms {
 			scalar sfield;
 			sfield = sum(field*zoneSelector).value(); 
 			reduce(sfield,sumOp<scalar>());
-			Info << " ---- " << ZoneVolume << " " << sfield << endl;
 			return sfield/ZoneVolume;
 	}
 
